@@ -667,6 +667,24 @@ namespace AcrFfbGain
                 }
                 catch (InvalidOperationException) { }
 
+                // The game re-applies its own menu resolution while the stage finishes loading, sometimes
+                // after our write (measured in-game). Keep the stage's value for 45 s after a load; after
+                // that a change the user makes in the game's menu is respected.
+                if (fullRescan && resWrite > 0 && resOk)
+                {
+                    float target = AppState.ResWriteValue(resWrite);
+                    var enforcer = new Thread(() =>
+                    {
+                        DateTime stop = DateTime.Now.AddSeconds(45);
+                        while (DateTime.Now < stop && _applyGen == myGen && Telemetry.FindGame() != null)
+                        {
+                            _resWriter.Enforce(pid, target);
+                            Thread.Sleep(500);
+                        }
+                    }) { IsBackground = true };
+                    enforcer.Start();
+                }
+
                 // The game can create new copies of its settings (e.g. when the stage or the settings menu
                 // loads). After a stage load, scan again and write to every copy found.
                 if (ok && fullRescan)

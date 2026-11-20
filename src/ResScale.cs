@@ -100,6 +100,35 @@ namespace AcrFfbGain
             }
         }
 
+        /// <summary>
+        /// The game re-applies its own menu resolution during a stage load, sometimes after the app has
+        /// already written. Call this repeatedly for a short while after a load: it puts the value back
+        /// when it changed. Returns true when it had to rewrite.
+        /// </summary>
+        public bool Enforce(int pid, float percent)
+        {
+            lock (_gate)
+            {
+                if (pid != _pid || _cvar == 0) return false;
+                float v = Math.Max(33f, Math.Min(200f, percent));
+                try
+                {
+                    using (var mem = new ProcessMemory(pid))
+                    {
+                        var cur = mem.ReadFloat(_cvar);
+                        if (!cur.HasValue || Math.Abs(cur.Value - v) < 0.01f) return false;
+                        var bytes = BitConverter.GetBytes(v);
+                        mem.Write(_cvar, bytes);
+                        mem.Write(_cvar + 4, bytes);
+                        foreach (var a in _menuCopies) mem.Write(a, bytes);
+                        Log.Write("ResScale: game reset the resolution to " + cur.Value.ToString("0.#") + "%, set it back to " + v.ToString("0.#") + "%");
+                        return true;
+                    }
+                }
+                catch { return false; }
+            }
+        }
+
         public bool Apply(int pid, float percent, out string error)
         {
             lock (_gate)
