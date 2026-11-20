@@ -1,0 +1,5 @@
+# Temporary files
+*.tmp
+*.log
+
+# The built app (AcrFfbGain.exe) is committed on purpose so a revert gives a working app without rebuilding.

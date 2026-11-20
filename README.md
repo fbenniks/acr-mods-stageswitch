@@ -1,0 +1,35 @@
+# AC Rally FFB Gain
+
+Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage, and shows a popup over the game for 10 seconds when it changes it.
+
+## Use
+
+1. Run `AcrFfbGain.exe` (it lives in the system tray; closing the window keeps it running — right-click the tray icon → Exit to quit).
+2. Set a value (0–200) per stage. The bold rally row sets all stages of that rally at once.
+   Untick a stage to leave the game's gain alone there.
+3. Start AC Rally and load a stage: the gain is set and a popup shows the new value.
+   Changing the value of the stage you're on in the app applies it immediately.
+
+## How it works
+
+- **Stage list** – read from the game's asset index (`acr\Content\Paks\*.utoc`, pacenote tables `DT_Pacenote<Stage>…`).
+  Rescanned at app start and whenever the game starts, so stages added by game updates appear automatically.
+- **Stage detection** – the game's shared memory (`Local\acpmf_static`, ACC layout) signals that a stage
+  loaded and names the rally plus an area (e.g. `Wales Cwmbiga`, which is really Hafren North). The exact stage
+  is then read from the save file, where the game writes the event you start (e.g. `WelesS3HafrenNorthFullForward`).
+  If that fails, the rally's value is used.
+- **Changing the gain** – the game keeps its settings in memory in the same layout it writes to
+  `%LOCALAPPDATA%\acr\Saved\SaveGames\PlayerDataSaveSlot.sav`. The app uses the bytes around the gain in that
+  file as a fingerprint, finds the copies in the game's memory and writes the new value (150 = 1.5).
+  The force changes immediately and the settings menu shows the new value.
+  If a game update changes that layout, the popup will say the gain was **not** changed.
+
+Settings and log: `%APPDATA%\AcrFfbGain\` (`settings.json`, `log.txt`).
+
+## Build
+
+```powershell
+.\build.ps1
+```
+
+Uses the C# compiler that ships with Windows (.NET Framework 4.x); no SDK needed.
