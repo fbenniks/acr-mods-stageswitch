@@ -463,6 +463,13 @@ namespace AcrFfbGain
 
         void Raise() { if (Changed != null) Changed(this, EventArgs.Empty); }
 
+        const float BadgeW = 88, BadgeH = 26;
+
+        RectangleF BadgeRect()
+        {
+            return new RectangleF(_stepper.Left - 18 - BadgeW, (HeaderH - BadgeH) / 2f, BadgeW, BadgeH);
+        }
+
         void SetHover(bool on)
         {
             if (_hoverHeader == on) return;
@@ -538,25 +545,29 @@ namespace AcrFfbGain
             using (var b = new SolidBrush(_strip)) g.FillRectangle(b, 0, 0, 4, HeaderH);
             _style.DrawFlag(g, FlagRect);
 
-            // surface badge next to the name: [icon Gravel]
+            // surface badge: same size on every card, in a fixed column left of the stepper
             string surface = RallyStyle.SurfaceName(_style.Surface);
             if (surface != null)
             {
-                using (var f = new Font("Segoe UI Semibold", 8.25f))
+                using (var f = new Font("Segoe UI Semibold", 8.5f))
                 {
                     var c = RallyStyle.SurfaceColor(_style.Surface);
-                    var ts = g.MeasureString(surface, f);
-                    float h = 20, x = _name.Right + 10, y = _name.Top + (_name.Height - h) / 2f + 1;
-                    var pill = new RectangleF(x, y, 8 + 14 + 4 + ts.Width + 6, h);
-                    using (var path = Theme.Round(pill, h / 2f))
+                    var pill = BadgeRect();
+                    using (var path = Theme.Round(pill, pill.Height / 2f))
                     using (var b = new SolidBrush(Color.FromArgb(38, c)))
                     using (var p = new Pen(Color.FromArgb(110, c)))
                     {
                         g.FillPath(b, path);
                         g.DrawPath(p, path);
                     }
-                    RallyStyle.DrawSurfaceIcon(g, new RectangleF(x + 7, y + 3, 14, 14), _style.Surface, c);
-                    using (var b = new SolidBrush(c)) g.DrawString(surface, f, b, x + 8 + 14 + 2, y + (h - ts.Height) / 2f);
+                    // icon + label centred as one group
+                    var ts = g.MeasureString(surface, f);
+                    const float icon = 14, gap = 4;
+                    float groupW = icon + gap + ts.Width;
+                    float gx = pill.X + (pill.Width - groupW) / 2f;
+                    RallyStyle.DrawSurfaceIcon(g, new RectangleF(gx, pill.Y + (pill.Height - icon) / 2f, icon, icon), _style.Surface, c);
+                    using (var b = new SolidBrush(c))
+                        g.DrawString(surface, f, b, gx + icon + gap, pill.Y + (pill.Height - ts.Height) / 2f + 0.5f);
                 }
             }
 
