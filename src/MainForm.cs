@@ -13,12 +13,15 @@ namespace AcrFfbGain
         readonly AppConfig _cfg;
         readonly OverlayForm _overlay = new OverlayForm();
         readonly GainWriter _writer = new GainWriter();
+        readonly ResScaleWriter _resWriter = new ResScaleWriter();
         readonly NotifyIcon _tray = new NotifyIcon();
         readonly System.Windows.Forms.Timer _poll = new System.Windows.Forms.Timer();
         readonly System.Windows.Forms.Timer _saveTimer = new System.Windows.Forms.Timer();
 
         Label _lblGame, _lblStage, _lblApplied, _lblFooter;
         FlowLayoutPanel _list;
+        ColumnHeaderBar _columns;
+        DateTime _graphicsReadAt = DateTime.MinValue;
 
         readonly HashSet<string> _expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // rallies opened this session
         string _lastStageKey;
@@ -39,7 +42,11 @@ namespace AcrFfbGain
         string _queuedCar;
         bool _queuedPopup;
         int _appliedGain = -1;
+        int _appliedRes;
+        int _queuedRes;
+        int _queuedResWrite;
         volatile int _applyGen;
+        bool _warmedUp;
         readonly System.Windows.Forms.Timer _reapplyTimer = new System.Windows.Forms.Timer();
 
         public MainForm(AppConfig cfg)
@@ -56,6 +63,7 @@ namespace AcrFfbGain
 
             BuildUi();
             BuildTray();
+            RefreshGameGraphics();
             RebuildList();
 
             _saveTimer.Interval = 800;
@@ -166,6 +174,13 @@ namespace AcrFfbGain
                     Text = _scanning ? "Scanning game files for stages…" : "No stages found yet. Use “Game folder…” if AC Rally is installed somewhere unusual.",
                     AutoSize = false, Height = 60, Width = 600, ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft,
                 });
+            }
+
+            if (_cfg.Rallies.Count > 0)
+            {
+                _columns = new ColumnHeaderBar();
+                new ToolTip().SetToolTip(_columns, "Res scale: render resolution per stage (— = keep the game's setting). Upscaler is read from the game's graphics settings.");
+                _list.Controls.Add(_columns);
             }
 
             foreach (var rally in _cfg.Rallies)
@@ -326,14 +341,16 @@ namespace AcrFfbGain
             TelemetrySnapshot snap;
             try { snap = Telemetry.Read(); }
             catch (Exception ex) { Log.Write("Telemetry: " + ex.Message); return; }
+            RefreshGameGraphics();
 
             if (!snap.GameRunning)
             {
                 SetGame("●  Game not running", Theme.Muted);
-                _lblStage.Text = "Start AC Rally — the gain is applied automatically when a stage loads.";
-                if (_lastPid != 0) { _writer.Reset(); _lastPid = 0; }
+                _lblStage.Text = "Start AC Rally — settings are applied automatically when a stage loads.";
+                if (_lastPid != 0) { _writer.Reset(); _resWriter.Reset(); _lastPid = 0; }
                 _lastStageKey = null;
                 _appliedGain = -1;
+                _appliedRes = 0;
                 return;
             }
 
@@ -341,6 +358,8 @@ namespace AcrFfbGain
             {
                 _lastPid = snap.ProcessId;
                 _writer.Reset();
+                _resWriter.Reset();
+                _warmedUp = false;
                 _lastStageKey = null;
                 _menuSince = DateTime.MinValue;
                 _activePopupShown = false;
@@ -352,6 +371,16 @@ namespace AcrFfbGain
                 SetGame("●  Game running", Theme.Good);
                 _lblStage.Text = "Waiting for the game's telemetry…";
                 return;
+            }
+
+            // While the game sits in its menus, find the render-scale setting in the background once,
+            // so changing it on the first stage is instant.
+            if (!_warmedUp && _cfg.Rallies.Any(r => r.Stages.Any(s => s.ResScale > 0)))
+            {
+                _warmedUp = true;
+                int pid = snap.ProcessId;
+                var w = new Thread(() => { _resWriter.Warmup(pid); }) { IsBackground = true };
+                w.Start();
             }
 
             // AC Rally fills the track name when a stage is loaded and clears it in the menus.
@@ -457,6 +486,20 @@ namespace AcrFfbGain
             Log.Write("Game in menu: showed 'StageSwitch active' popup");
         }
 
+        /// <summary>Reads the upscaler and menu resolution scale from the game's settings (every few seconds).</summary>
+        void RefreshGameGraphics()
+        {
+            if ((DateTime.Now - _graphicsReadAt).TotalSeconds < 3) return;
+            _graphicsReadAt = DateTime.Now;
+            int up; float res;
+            if (!GameGraphics.TryRead(out up, out res)) return;
+            int r = (int)Math.Round(res);
+            if (up == AppState.Upscaler && r == AppState.GameResScale) return;
+            AppState.Upscaler = up;
+            AppState.GameResScale = r;
+            if (_columns != null) _columns.Invalidate();
+        }
+
         void ReapplyCurrent()
         {
             if (_lastStageKey == null) return;
@@ -481,6 +524,7 @@ namespace AcrFfbGain
             if (isNewLoad && stage != null) LearnStageName(track, rally, stage);
 
             int gain;
+            int res = 0;   // 0 = leave the game's resolution scale alone
             string label;
             if (stage != null)
             {
@@ -491,6 +535,7 @@ namespace AcrFfbGain
                     return;
                 }
                 gain = stage.Gain;
+                res = stage.ResScale;
                 int carGain;
                 if (_cfg.PerCar && car != null && stage.CarGains.TryGetValue(car.Id, out carGain))
                     gain = carGain;
@@ -498,8 +543,9 @@ namespace AcrFfbGain
             }
             else if (rally != null)
             {
-                // Known rally, but the exact stage couldn't be determined: use the rally's value.
+                // Known rally, but the exact stage couldn't be determined: use the rally's values.
                 gain = rally.Gain;
+                res = rally.ResScale;
                 label = rally.Name;
             }
             else
@@ -512,16 +558,20 @@ namespace AcrFfbGain
                 return;
             }
 
-            if (!isNewLoad && gain == _appliedGain) return;
+            if (!isNewLoad && gain == _appliedGain && res == _appliedRes) return;
             _queuedStyle = RallyStyle.For(rally.Id, rally.Name);
             _queuedCar = car != null ? car.Name : null;
-            QueueApply(gain, label, isNewLoad);
+            // "—" after the app changed the resolution earlier: hand it back to the game's own menu value
+            int resWrite = res > 0 ? res : (_appliedRes > 0 ? AppState.GameResScale : 0);
+            QueueApply(gain, res, resWrite, label, isNewLoad);
         }
 
-        /// <summary>Writes the gain on a background thread (finding it in memory can take a few seconds).</summary>
-        void QueueApply(int gain, string label, bool fullRescan)
+        /// <summary>Writes the settings on a background thread (finding them in memory can take a few seconds).</summary>
+        void QueueApply(int gain, int res, int resWrite, string label, bool fullRescan)
         {
             _queuedGain = gain;
+            _queuedRes = res;
+            _queuedResWrite = resWrite;
             _queuedLabel = label;
             _queuedPopup = true;
             if (_applying) return;
@@ -532,6 +582,8 @@ namespace AcrFfbGain
         {
             int pid = _lastPid;
             int gain = _queuedGain;
+            int res = _queuedRes;
+            int resWrite = _queuedResWrite;
             string label = _queuedLabel;
             RallyStyle style = _queuedStyle;
             string carForPopup = _queuedCar;
@@ -556,18 +608,28 @@ namespace AcrFfbGain
                     rescan = true;
                     Thread.Sleep(2000);
                 }
+
+                // Resolution scale (optional per stage)
+                string resErr = null;
+                bool resOk = resWrite <= 0 || _resWriter.Apply(pid, resWrite, out resErr);
+                if (resWrite > 0) Log.Write(resOk ? "Applied res scale " + resWrite + "%" + (res == 0 ? " (back to the game's setting)" : "") + " for " + label : "Failed to apply res scale " + resWrite + "%: " + resErr);
+
                 try
                 {
                     BeginInvoke((Action)(() =>
                     {
                         _applying = false;
+                        if (resOk) _appliedRes = res;
+                        string resText = resWrite <= 0 ? "" : resOk
+                            ? "  ·  Res " + resWrite + "%" + (AppState.UpscalerName != null ? " " + AppState.UpscalerName : "")
+                            : "  ·  Res NOT changed";
                         if (ok)
                         {
                             _appliedGain = gain;
                             Log.Write("Applied FFB gain " + gain + " for " + label);
-                            _lblApplied.Text = "Last change: " + gain + "  (" + label + ")";
+                            _lblApplied.Text = "Last change: FFB " + gain + resText + "  (" + label + ")";
                             if (_cfg.ShowOverlay && popup)
-                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain, label, true, _cfg.OverlaySeconds, style, carForPopup);
+                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain + resText, label, resOk, _cfg.OverlaySeconds, style, carForPopup);
                         }
                         else
                         {

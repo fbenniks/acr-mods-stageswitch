@@ -11,6 +11,7 @@ namespace AcrFfbGain
         public string Name;        // display name, e.g. "Hafren North"
         public bool Enabled = true;
         public int Gain = 100;
+        public int ResScale;       // render resolution scale in % (33–200); 0 = leave the game's setting alone
         public bool Detected;      // true when added from telemetry rather than from the game files
         public bool NameFromGame;  // Name was taken from what the game reports for this stage
         public Dictionary<string, int> CarGains = new Dictionary<string, int>(); // optional per-car values (car Id -> gain)
@@ -28,6 +29,7 @@ namespace AcrFfbGain
         public string Id;          // e.g. "Wales"
         public string Name;        // e.g. "Wales"
         public int Gain = 100;
+        public int ResScale;       // 0 = leave alone
         public List<StageConfig> Stages = new List<StageConfig>();
     }
 
@@ -144,6 +146,19 @@ namespace AcrFfbGain
     public static class AppState
     {
         public static string CurrentCarId; // car on the current stage, if any
+        public static int Upscaler = -1;   // from the game's settings: 2 TSR, 3 DLSS, 4 XeSS, 5 FSR
+        public static int GameResScale = 100; // resolution scale set in the game's menu
+
+        public static string UpscalerName { get { return GameGraphics.UpscalerName(Upscaler); } }
+
+        /// <summary>Starting value when a resolution scale is first set for a stage.</summary>
+        public static int ResStart() { return Math.Max(33, Math.Min(200, GameResScale)); }
+
+        /// <summary>A stepper set up for the resolution scale column.</summary>
+        public static GainStepper NewResStepper()
+        {
+            return new GainStepper { Minimum = 33, Maximum = 200, AllowEmpty = true, EmptyStart = ResStart, Suffix = "%" };
+        }
     }
 
     public static class Log

@@ -10,6 +10,7 @@ namespace AcrFfbGain
 {
     public static class Theme
     {
+        public const int ColumnGap = 12; // space between the Res scale and FFB gain columns
         public static readonly Color Bg = Color.FromArgb(23, 25, 31);
         public static readonly Color Panel = Color.FromArgb(31, 34, 42);
         public static readonly Color PanelAlt = Color.FromArgb(38, 42, 52);
@@ -68,7 +69,22 @@ namespace AcrFfbGain
         readonly Timer _repeat = new Timer();
         TextBox _edit;
         public int Step = 5;
+        public int Minimum = 0;
+        public int Maximum = 200;
+        /// <summary>Value 0 = "—" (leave the game's setting alone). − below Minimum goes to "—".</summary>
+        public bool AllowEmpty;
+        /// <summary>Value used when + is pressed on "—".</summary>
+        public Func<int> EmptyStart;
+        public string Suffix = "";
         public event EventHandler ValueChanged;
+
+        public bool IsEmpty { get { return AllowEmpty && _value == 0; } }
+
+        int Clamp(int v)
+        {
+            if (AllowEmpty && v <= 0) return 0;
+            return Math.Max(Minimum, Math.Min(Maximum, v));
+        }
 
         public GainStepper()
         {
@@ -88,7 +104,7 @@ namespace AcrFfbGain
             get { return _value; }
             set
             {
-                int v = Math.Max(0, Math.Min(200, value));
+                int v = Clamp(value);
                 if (v == _value && !_mixed) return;
                 _value = v;
                 _mixed = false;
@@ -106,14 +122,20 @@ namespace AcrFfbGain
 
         public void SetSilently(int v)
         {
-            _value = Math.Max(0, Math.Min(200, v));
+            _value = Clamp(v);
             Invalidate();
         }
 
         void Nudge(int dir)
         {
+            if (IsEmpty || _mixed && AllowEmpty && _value == 0)
+            {
+                if (dir > 0) Value = EmptyStart != null ? EmptyStart() : Maximum / 2;
+                return;
+            }
             // Snap to the step grid: 147 -> 150 / 145
             int v = dir > 0 ? (_value / Step + 1) * Step : ((_value + Step - 1) / Step - 1) * Step;
+            if (v < Minimum) v = AllowEmpty && _value <= Minimum ? 0 : Minimum;
             Value = v;
         }
 
@@ -177,7 +199,7 @@ namespace AcrFfbGain
                 Font = new Font("Segoe UI", 12f, FontStyle.Bold),
                 TextAlign = HorizontalAlignment.Center,
                 MaxLength = 3,
-                Text = _mixed ? "" : _value.ToString(),
+                Text = _mixed || IsEmpty ? "" : _value.ToString(),
                 Width = Width - 2 * Height - 4,
             };
             _edit.Left = Height + 2;
@@ -202,6 +224,7 @@ namespace AcrFfbGain
             _edit = null;
             int v;
             if (commit && int.TryParse(box.Text, out v)) Value = v;
+            else if (commit && AllowEmpty && box.Text.Trim().Length == 0) Value = 0;
             Controls.Remove(box);
             box.Dispose();
             Invalidate();
@@ -243,9 +266,10 @@ namespace AcrFfbGain
 
             if (_edit == null)
             {
-                string text = _mixed ? "mixed" : _value.ToString();
-                using (var f = _mixed ? new Font("Segoe UI", 9.5f, FontStyle.Italic) : new Font("Segoe UI", 12f, FontStyle.Bold))
-                using (var b = new SolidBrush(!Enabled ? Theme.Faint : _mixed ? Theme.Muted : Theme.Accent))
+                bool empty = IsEmpty && !_mixed;
+                string text = _mixed ? "mixed" : empty ? "—" : _value + Suffix;
+                using (var f = _mixed ? new Font("Segoe UI", 9.5f, FontStyle.Italic) : empty ? new Font("Segoe UI", 12f) : new Font("Segoe UI", 12f, FontStyle.Bold))
+                using (var b = new SolidBrush(!Enabled ? Theme.Faint : _mixed || empty ? Theme.Muted : Theme.Accent))
                 {
                     var sz = g.MeasureString(text, f);
                     g.DrawString(text, f, b, (Width - sz.Width) / 2f, (Height - sz.Height) / 2f);
@@ -306,7 +330,8 @@ namespace AcrFfbGain
         public readonly StageConfig Stage;
         public readonly ToggleSwitch Toggle;
         public readonly Label Title;
-        public readonly GainStepper Stepper;
+        public readonly GainStepper Stepper;      // FFB gain
+        public readonly GainStepper ResStepper;   // resolution scale
         public event EventHandler Changed;
         readonly ToolTip _tip = new ToolTip();
         readonly AppConfig _cfg;
@@ -341,6 +366,10 @@ namespace AcrFfbGain
             };
             Stepper = new GainStepper { Top = (LineH - 34) / 2 };
             Stepper.SetSilently(stage.Gain);
+            ResStepper = AppState.NewResStepper();
+            ResStepper.Top = (LineH - 34) / 2;
+            ResStepper.SetSilently(stage.ResScale);
+            _tip.SetToolTip(ResStepper, "Render resolution scale on this stage. — = keep the game's setting");
 
             // "+ Car" (only with the "Different gain per car" option)
             _addCar = new LinkLabel
@@ -361,10 +390,12 @@ namespace AcrFfbGain
             Controls.Add(Toggle);
             Controls.Add(Title);
             Controls.Add(_addCar);
+            Controls.Add(ResStepper);
             Controls.Add(Stepper);
 
             Toggle.CheckedChanged += delegate { Stage.Enabled = Toggle.Checked; UpdateLook(); Raise(); };
             Stepper.ValueChanged += delegate { Stage.Gain = Stepper.Value; Raise(); };
+            ResStepper.ValueChanged += delegate { Stage.ResScale = ResStepper.Value; Raise(); };
             Title.Click += delegate { Toggle.Checked = !Toggle.Checked; };
             BuildCarLines();
             UpdateLook();
@@ -376,6 +407,7 @@ namespace AcrFfbGain
         {
             Title.ForeColor = Stage.Enabled ? Theme.Text : Theme.Faint;
             Stepper.Enabled = Stage.Enabled;
+            ResStepper.Enabled = Stage.Enabled;
             foreach (var s in _carSteppers) s.Enabled = Stage.Enabled;
         }
 
@@ -494,17 +526,18 @@ namespace AcrFfbGain
         {
             if (Stepper == null) return; // called from the base constructor
             Stepper.Left = Width - Stepper.Width - 16;
-            _addCar.Left = Stepper.Left - _addCar.Width - 14;
+            ResStepper.Left = Stepper.Left - Theme.ColumnGap - ResStepper.Width;
+            _addCar.Left = ResStepper.Left - _addCar.Width - 14;
             // Use the setting, not _addCar.Visible: while the rally is folded the row is hidden and every
             // child reports Visible = false, which made the name label cover the "+ Car" link.
-            int titleRight = _cfg.PerCar ? _addCar.Left - 8 : Stepper.Left - 10;
+            int titleRight = _cfg.PerCar ? _addCar.Left - 8 : ResStepper.Left - 10;
             Title.Width = Math.Max(40, titleRight - Title.Left);
             foreach (var c in _carControls)
             {
                 var gs = c as GainStepper;
                 if (gs != null) gs.Left = Stepper.Right - gs.Width;
                 else if ((c.Tag as string) == "remove") c.Left = Stepper.Left - 6 - 24 - 4 + (Stepper.Width - 120);
-                else c.Width = Math.Max(40, Stepper.Left - 40 - c.Left);
+                else c.Width = Math.Max(40, ResStepper.Left - 40 - c.Left);
             }
         }
 
@@ -539,7 +572,8 @@ namespace AcrFfbGain
         readonly Panel _header;
         readonly Label _name;
         readonly Label _summary;
-        readonly GainStepper _stepper;
+        readonly GainStepper _stepper;      // FFB gain, all stages
+        readonly GainStepper _resStepper;   // resolution scale, all stages
         readonly List<StageRow> _rows = new List<StageRow>();
         readonly RallyStyle _style;
         readonly Color _strip;
@@ -587,8 +621,12 @@ namespace AcrFfbGain
             };
             _stepper = new GainStepper { Top = (HeaderH - 34) / 2 };
             _stepper.SetSilently(rally.Gain);
+            _resStepper = AppState.NewResStepper();
+            _resStepper.Top = (HeaderH - 34) / 2;
+            _resStepper.SetSilently(rally.ResScale);
             _header.Controls.Add(_name);
             _header.Controls.Add(_summary);
+            _header.Controls.Add(_resStepper);
             _header.Controls.Add(_stepper);
             Controls.Add(_header);
 
@@ -608,15 +646,27 @@ namespace AcrFfbGain
             foreach (Control c in new Control[] { _header, _name, _summary })
             {
                 c.MouseEnter += delegate { SetHover(true); };
-                c.MouseLeave += delegate { SetHover(_header.ClientRectangle.Contains(_header.PointToClient(Cursor.Position)) && !_stepper.Bounds.Contains(_header.PointToClient(Cursor.Position))); };
+                c.MouseLeave += delegate
+                {
+                    var pt = _header.PointToClient(Cursor.Position);
+                    SetHover(_header.ClientRectangle.Contains(pt) && !_stepper.Bounds.Contains(pt) && !_resStepper.Bounds.Contains(pt));
+                };
             }
             _stepper.MouseEnter += delegate { SetHover(false); };
+            _resStepper.MouseEnter += delegate { SetHover(false); };
             _header.Paint += PaintHeader;
 
             _stepper.ValueChanged += delegate
             {
                 Rally.Gain = _stepper.Value;
                 foreach (var r in _rows) { r.Stage.Gain = Rally.Gain; r.Stepper.SetSilently(Rally.Gain); }
+                RefreshSummary();
+                Raise();
+            };
+            _resStepper.ValueChanged += delegate
+            {
+                Rally.ResScale = _resStepper.Value;
+                foreach (var r in _rows) { r.Stage.ResScale = Rally.ResScale; r.ResStepper.SetSilently(Rally.ResScale); }
                 RefreshSummary();
                 Raise();
             };
@@ -631,7 +681,7 @@ namespace AcrFfbGain
 
         RectangleF BadgeRect()
         {
-            return new RectangleF(_stepper.Left - 18 - BadgeW, (HeaderH - BadgeH) / 2f, BadgeW, BadgeH);
+            return new RectangleF(_resStepper.Left - 18 - BadgeW, (HeaderH - BadgeH) / 2f, BadgeW, BadgeH);
         }
 
         void SetHover(bool on)
@@ -664,17 +714,24 @@ namespace AcrFfbGain
             int on = stages.Count(s => s.Enabled);
             var gains = stages.Where(s => s.Enabled).Select(s => s.Gain).Distinct().ToList();
             string count = stages.Count == 1 ? "1 stage" : stages.Count + " stages";
+            var res = stages.Where(s => s.Enabled).Select(s => s.ResScale).Distinct().ToList();
             string detail;
             if (on == 0) detail = "all off";
-            else if (gains.Count == 1) detail = on == stages.Count ? "all " + gains[0] : on + " on, " + gains[0];
-            else detail = "custom per stage (" + gains.Min() + "–" + gains.Max() + ")";
+            else
+            {
+                detail = gains.Count == 1 ? "FFB " + gains[0] : "FFB " + gains.Min() + "–" + gains.Max();
+                if (res.Count > 1) detail += "  ·  res per stage";
+                else if (res.Count == 1 && res[0] > 0) detail += "  ·  res " + res[0] + "%";
+                if (on < stages.Count) detail += "  ·  " + (stages.Count - on) + " off";
+            }
             int carOverrides = _cfg.PerCar ? stages.Sum(s => s.CarGains.Count) : 0;
             string cars = carOverrides == 0 ? "" : "  ·  " + carOverrides + (carOverrides == 1 ? " car setting" : " car settings");
             _summary.Text = count + "  ·  " + detail + cars;
 
-            bool mixed = gains.Count > 1;
             if (gains.Count == 1 && gains[0] != Rally.Gain) { Rally.Gain = gains[0]; _stepper.SetSilently(gains[0]); }
-            _stepper.Mixed = mixed;
+            _stepper.Mixed = gains.Count > 1;
+            if (res.Count == 1 && res[0] != Rally.ResScale) { Rally.ResScale = res[0]; _resStepper.SetSilently(res[0]); }
+            _resStepper.Mixed = res.Count > 1;
         }
 
         void LayoutCard()
@@ -697,6 +754,7 @@ namespace AcrFfbGain
             _header.Top = 1;
             _header.Width = Width - 2;
             _stepper.Left = _header.Width - _stepper.Width - 16;
+            _resStepper.Left = _stepper.Left - Theme.ColumnGap - _resStepper.Width;
             foreach (var r in _rows) r.Width = Width - 2;
             Invalidate();
         }
@@ -751,6 +809,55 @@ namespace AcrFfbGain
             base.OnPaint(e);
             using (var b = new SolidBrush(_strip)) e.Graphics.FillRectangle(b, 1, 1, 4, Height - 2);
             using (var p = new Pen(Theme.Border)) e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
+        }
+    }
+
+    /// <summary>Column titles above the cards, centred over the Res scale and FFB gain columns.</summary>
+    public class ColumnHeaderBar : Control
+    {
+        public ColumnHeaderBar()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            Height = 26;
+            Margin = new Padding(0, 6, 0, 2);
+            BackColor = Theme.Bg;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Theme.Bg);
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            const int stepperW = 132;
+            // same geometry as the cards: 1px border + 16px right padding
+            float ffbCenter = Width - 1 - 16 - stepperW / 2f;
+            float resCenter = ffbCenter - stepperW - Theme.ColumnGap;
+            string up = AppState.UpscalerName;
+            using (var f = new Font("Segoe UI Semibold", 8.25f))
+            using (var b = new SolidBrush(Theme.Muted))
+            using (var bAccent = new SolidBrush(Theme.Accent))
+            using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            {
+                g.DrawString("FFB GAIN", f, b, new RectangleF(ffbCenter - 80, 0, 160, Height), sf);
+                if (up == null)
+                {
+                    g.DrawString("RES SCALE", f, b, new RectangleF(resCenter - 80, 0, 160, Height), sf);
+                }
+                else
+                {
+                    // "RES SCALE · DLSS" with the upscaler highlighted
+                    string a = "RES SCALE  ·  ";
+                    using (var tf = (StringFormat)StringFormat.GenericTypographic.Clone())
+                    {
+                        tf.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces; // keep the gap before the upscaler name
+                        var sa = g.MeasureString(a, f, PointF.Empty, tf);
+                        var su = g.MeasureString(up, f, PointF.Empty, tf);
+                        float x = resCenter - (sa.Width + su.Width) / 2f, y = (Height - sa.Height) / 2f;
+                        g.DrawString(a, f, b, x, y, tf);
+                        g.DrawString(up, f, bAccent, x + sa.Width, y, tf);
+                    }
+                }
+            }
         }
     }
 

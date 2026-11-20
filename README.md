@@ -1,6 +1,7 @@
 # AC Rally StageSwitch
 
-Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage (and optionally per car), and shows a popup over the game for 10 seconds when it changes it.
+Sets Assetto Corsa Rally's in-game **FFB gain** (optionally per car) and **render resolution scale** automatically per stage,
+and shows a popup over the game for 10 seconds when it changes them.
 
 ## Use
 
@@ -30,6 +31,11 @@ Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage (and opt
   file as a fingerprint, finds the copies in the game's memory and writes the new value (150 = 1.5).
   The force changes immediately and the settings menu shows the new value.
   If a game update changes that layout, the popup will say the gain was **not** changed.
+- **Resolution scale** (33–200 %, "—" = keep the game's own setting) – written live to the engine's
+  `r.ScreenPercentage` console variable, found by its help text, plus the game's menu copies so the graphics menu
+  shows the same value. Setting a stage back to "—" restores the value from the game's menu.
+  The upscaler shown in the column title (TSR / DLSS / XeSS / FSR = 2 / 3 / 4 / 5) is read from the save file.
+  With DLSS the game itself rounds menu values to DLSS presets (e.g. 63 % → 66.7 %); the app writes the exact value.
 
 Settings and log: `%APPDATA%\AC Rally StageSwitch\` (`settings.json`, `log.txt`).
 Settings from before the rename (`%APPDATA%\AcrFfbGain\`) are copied over on first start; the old folder is left as a backup.
