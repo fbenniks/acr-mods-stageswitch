@@ -37,6 +37,40 @@ namespace AcrFfbGain
             { "Montecarlo", "MonteCarlo" },
         };
 
+        // Official names where the game's internal IDs differ (from published AC Rally stage lists).
+        // Other stages keep their internal name until the game reports a better one.
+        static readonly Dictionary<string, string> OfficialStageNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Bollene", "La Bollène-Vésubie" },
+            { "Sisteron", "Sisteron" },
+            { "Munster", "Vallée de Munster" },
+            { "Saverne", "Saverne" },
+            { "HafrenNorth", "Hafren North" },
+            { "HafrenSouth", "Hafren South" },
+        };
+
+        static readonly Dictionary<string, string> OfficialRallyNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "MonteCarlo", "Monte-Carlo" },
+        };
+
+        public static bool HasOfficialName(string stageId)
+        {
+            return stageId != null && OfficialStageNames.ContainsKey(stageId);
+        }
+
+        public static string StageName(string stageId)
+        {
+            string n;
+            return OfficialStageNames.TryGetValue(stageId, out n) ? n : Pretty(stageId);
+        }
+
+        public static string RallyName(string rallyId)
+        {
+            string n;
+            return OfficialRallyNames.TryGetValue(rallyId, out n) ? n : Pretty(rallyId);
+        }
+
         public static string FindGameDir()
         {
             var candidates = new List<string>();
@@ -262,7 +296,7 @@ namespace AcrFfbGain
                 var rally = cfg.FindRally(s.RallyId);
                 if (rally == null)
                 {
-                    rally = new RallyConfig { Id = s.RallyId, Name = Pretty(s.RallyId), Gain = cfg.DefaultGain };
+                    rally = new RallyConfig { Id = s.RallyId, Name = RallyName(s.RallyId), Gain = cfg.DefaultGain };
                     cfg.Rallies.Add(rally);
                 }
                 var stage = rally.Stages.FirstOrDefault(x => string.Equals(x.Id, s.StageId, StringComparison.OrdinalIgnoreCase));
@@ -276,7 +310,7 @@ namespace AcrFfbGain
                     }
                     if (stage == null)
                     {
-                        stage = new StageConfig { Id = s.StageId, Name = Pretty(s.StageId), Gain = rally.Gain };
+                        stage = new StageConfig { Id = s.StageId, Name = StageName(s.StageId), Gain = rally.Gain };
                         added++;
                     }
                     stage.Detected = false;
@@ -290,6 +324,20 @@ namespace AcrFfbGain
                 r.Stages.RemoveAll(st => st.Detected && (r.Id != "Other" || known.Any(n => Norm(st.Id).Contains(n))));
 
             cfg.Rallies.RemoveAll(r => r.Stages.Count == 0);
+
+            // Bring names saved by older versions up to date (official names win; names the game
+            // reported are kept for stages without an official name).
+            foreach (var r in cfg.Rallies)
+            {
+                if (r.Id != "Other") r.Name = RallyName(r.Id);
+                foreach (var st in r.Stages)
+                {
+                    if (st.Detected) continue;
+                    if (HasOfficialName(st.Id)) { st.Name = StageName(st.Id); st.NameFromGame = false; }
+                    else if (!st.NameFromGame) st.Name = StageName(st.Id);
+                }
+            }
+
             foreach (var r in cfg.Rallies) r.Stages.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             cfg.Rallies.Sort((a, b) =>
             {

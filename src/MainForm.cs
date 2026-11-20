@@ -383,6 +383,35 @@ namespace AcrFfbGain
             }
         }
 
+        /// <summary>
+        /// Uses the stage name the game reports ("Sweden Vargåsen" -> "Vargåsen") for stages without an
+        /// official name, but only when it really is that stage: Wales reports route names like "Cwmbiga"
+        /// for Hafren North, and those must not replace the stage name.
+        /// </summary>
+        void LearnStageName(string track, RallyConfig rally, StageConfig stage)
+        {
+            if (StageScanner.HasOfficialName(stage.Id)) return;
+            string suffix = null;
+            foreach (var prefix in new[] { StageScanner.Norm(rally.Name), StageScanner.Norm(rally.Id) })
+            {
+                if (prefix.Length == 0) continue;
+                for (int i = 1; i <= track.Length; i++)
+                {
+                    if (StageScanner.Norm(track.Substring(0, i)) != prefix) continue;
+                    suffix = track.Substring(i).Trim(' ', '-', '·', ':');
+                    break;
+                }
+                if (suffix != null) break;
+            }
+            if (string.IsNullOrEmpty(suffix) || !StageScanner.Norm(suffix).Contains(StageScanner.Norm(stage.Id))) return;
+            if (stage.Name == suffix && stage.NameFromGame) return;
+            Log.Write("Stage name from game: " + stage.Id + " -> " + suffix);
+            stage.Name = suffix;
+            stage.NameFromGame = true;
+            _cfg.Save();
+            RebuildList();
+        }
+
         /// <summary>Finds the car the game reports in the car list (adds it if new) and keeps the game's name for it.</summary>
         CarInfo LearnCar(string carName)
         {
@@ -448,6 +477,8 @@ namespace AcrFfbGain
             AppState.CurrentCarId = car != null ? car.Id : null;
             if (isNewLoad)
                 Log.Write("Stage loaded: '" + track + "' car '" + carName + "' -> " + (stage != null ? rally.Id + "/" + stage.Id : rally != null ? rally.Id : "no match"));
+
+            if (isNewLoad && stage != null) LearnStageName(track, rally, stage);
 
             int gain;
             string label;

@@ -12,6 +12,7 @@ namespace AcrFfbGain
         public bool Enabled = true;
         public int Gain = 100;
         public bool Detected;      // true when added from telemetry rather than from the game files
+        public bool NameFromGame;  // Name was taken from what the game reports for this stage
         public Dictionary<string, int> CarGains = new Dictionary<string, int>(); // optional per-car values (car Id -> gain)
     }
 
