@@ -14,7 +14,9 @@ Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage, and sho
 
 ## How it works
 
-- **Stage list** – read from the game's asset index (`acr\Content\Paks\*.utoc`, pacenote tables `DT_Pacenote<Stage>…`).
+- **Stage list** – read from the game's asset index (`acr\Content\Paks\*.utoc`): pacenote tables `DT_Pacenote<Stage>…`
+  and layouts `DL_<Stage><Variant>GameplayActors`. Circuits without a rally (the Livigno ice circuit) become their own
+  location; rally stages only appear once they have pacenotes (unreleased layouts such as Col de la Charbonnière are skipped).
   Rescanned at app start and whenever the game starts, so stages added by game updates appear automatically.
 - **Stage detection** – the game's shared memory (`Local\acpmf_static`, ACC layout) signals that a stage
   loaded and names the rally plus an area (e.g. `Wales Cwmbiga`, which is really Hafren North). The exact stage

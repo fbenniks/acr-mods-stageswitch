@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 
 namespace AcrFfbGain
 {
-    public enum Surface { Unknown, Gravel, Tarmac, Snow }
+    public enum Surface { Unknown, Gravel, Tarmac, Snow, Ice }
 
     /// <summary>
     /// Look of each rally location: country, flag (drawn in code), surface and colour.
@@ -24,6 +24,7 @@ namespace AcrFfbGain
             { "MonteCarlo", new RallyStyle { Country = "Monaco", Surface = Surface.Tarmac, Flag = DrawMonaco } },
             { "Greece",     new RallyStyle { Country = "Greece", Surface = Surface.Gravel, Flag = DrawGreece } },
             { "Alsace",     new RallyStyle { Country = "France", Surface = Surface.Tarmac, Flag = DrawFrance } },
+            { "Livigno",    new RallyStyle { Country = "Italy",  Surface = Surface.Ice,    Flag = DrawItaly } },
         };
 
         public static RallyStyle For(string rallyId, string rallyName)
@@ -41,6 +42,7 @@ namespace AcrFfbGain
                 case Surface.Gravel: return Color.FromArgb(201, 140, 74);
                 case Surface.Tarmac: return Color.FromArgb(140, 150, 170);
                 case Surface.Snow: return Color.FromArgb(120, 200, 255);
+                case Surface.Ice: return Color.FromArgb(150, 232, 228);
                 default: return Theme.Border;
             }
         }
@@ -94,6 +96,16 @@ namespace AcrFfbGain
                         g.DrawLine(p, cx, cy - 0.6f * u, cx, cy - 2.4f * u);
                     }
                     break;
+                case Surface.Ice:
+                    // ice crystal: a faceted diamond
+                    using (var p = new Pen(c, 1.1f * u) { LineJoin = LineJoin.Round })
+                    {
+                        var pts = new[] { new PointF(cx, cy - 4.8f * u), new PointF(cx + 3.6f * u, cy), new PointF(cx, cy + 4.8f * u), new PointF(cx - 3.6f * u, cy) };
+                        g.DrawPolygon(p, pts);
+                        g.DrawLine(p, cx - 3.6f * u, cy, cx + 3.6f * u, cy);
+                        g.DrawLine(p, cx, cy - 4.8f * u, cx, cy + 4.8f * u);
+                    }
+                    break;
                 case Surface.Snow:
                     using (var p = new Pen(c, 1.1f * u) { StartCap = LineCap.Round, EndCap = LineCap.Round })
                     {
@@ -129,6 +141,14 @@ namespace AcrFfbGain
             Fill(g, Color.FromArgb(0, 85, 164), r.X, r.Y, w + 0.5f, r.Height);
             Fill(g, Color.White, r.X + w, r.Y, w + 0.5f, r.Height);
             Fill(g, Color.FromArgb(239, 65, 53), r.X + 2 * w, r.Y, w + 0.5f, r.Height);
+        }
+
+        static void DrawItaly(Graphics g, RectangleF r)
+        {
+            float w = r.Width / 3;
+            Fill(g, Color.FromArgb(0, 146, 70), r.X, r.Y, w + 0.5f, r.Height);
+            Fill(g, Color.FromArgb(244, 245, 240), r.X + w, r.Y, w + 0.5f, r.Height);
+            Fill(g, Color.FromArgb(206, 43, 55), r.X + 2 * w, r.Y, w + 0.5f, r.Height);
         }
 
         static void DrawMonaco(Graphics g, RectangleF r)

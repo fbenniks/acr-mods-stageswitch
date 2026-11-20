@@ -17,9 +17,13 @@ namespace AcrFfbGain
 
     /// <summary>
     /// Finds every stage shipped with the game by reading the asset index (.utoc) files.
-    /// Each stage has pacenote tables named DT_Pacenote&lt;Stage&gt;&lt;Variant&gt;, e.g.
-    /// DT_PacenoteBolleneFullForward. The rally a stage belongs to is taken from level
-    /// asset names such as "MonteCarloS1Bollene..." in the same index files.
+    /// Two sources:
+    ///  - pacenote tables DT_Pacenote&lt;Stage&gt;&lt;Variant&gt; (rally stages, e.g. DT_PacenoteBolleneFullForward)
+    ///  - layout data DL_&lt;Stage&gt;&lt;Variant&gt;GameplayActors (every drivable layout, incl. circuits such as
+    ///    the Livigno ice circuit, which has no pacenotes)
+    /// The rally a stage belongs to is taken from level asset names such as "MonteCarloS1Bollene...".
+    /// A rally stage only counts once it has pacenotes (layouts of unreleased stages already ship in the
+    /// files); a layout with no rally at all is a circuit and becomes its own location.
     /// New stages added by game updates are picked up automatically.
     /// </summary>
     public static class StageScanner
@@ -27,7 +31,8 @@ namespace AcrFfbGain
         const string GameFolderName = "Assetto Corsa Rally";
 
         static readonly Regex PacenoteRx = new Regex(@"DT_Pacenote([A-Za-z0-9]+)", RegexOptions.Compiled);
-        static readonly Regex VariantRx = new Regex(@"(Full|Cut\d+|Short\d+|Long\d+)?(Forward|Reverse)(Cut\d+|Short\d+)?$", RegexOptions.Compiled);
+        static readonly Regex LayoutRx = new Regex(@"DL_([A-Za-z0-9]+?)GameplayActors", RegexOptions.Compiled);
+        static readonly Regex VariantRx = new Regex(@"(Full|Ring|Cut\d+|Short\d+|Long\d+)?(Forward|Reverse)(Cut\d+|Short\d+)?$", RegexOptions.Compiled);
 
         // Typos that occur in the game's own asset names.
         static readonly Dictionary<string, string> RallyAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -47,6 +52,7 @@ namespace AcrFfbGain
             { "Saverne", "Saverne" },
             { "HafrenNorth", "Hafren North" },
             { "HafrenSouth", "Hafren South" },
+            { "Livigno", "Ghiacciodromo Livigno" },
         };
 
         static readonly Dictionary<string, string> OfficialRallyNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -122,23 +128,28 @@ namespace AcrFfbGain
                 catch (Exception ex) { Log.Write("Scan: cannot read " + f + ": " + ex.Message); }
             }
 
-            // 1. Stage base names + variants from the pacenote tables.
+            // 1. Stage base names + variants from pacenote tables and layout data.
             var stages = new Dictionary<string, ScannedStage>(StringComparer.OrdinalIgnoreCase);
+            var withPacenotes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var t in texts)
             {
-                foreach (Match m in PacenoteRx.Matches(t))
+                foreach (var rx in new[] { PacenoteRx, LayoutRx })
                 {
-                    string token = m.Groups[1].Value;
-                    var vm = VariantRx.Match(token);
-                    if (!vm.Success || vm.Index == 0) continue;
-                    string stageId = token.Substring(0, vm.Index);
-                    ScannedStage s;
-                    if (!stages.TryGetValue(stageId, out s))
+                    foreach (Match m in rx.Matches(t))
                     {
-                        s = new ScannedStage { StageId = stageId };
-                        stages[stageId] = s;
+                        string token = m.Groups[1].Value;
+                        var vm = VariantRx.Match(token);
+                        if (!vm.Success || vm.Index == 0) continue;
+                        string stageId = token.Substring(0, vm.Index);
+                        ScannedStage s;
+                        if (!stages.TryGetValue(stageId, out s))
+                        {
+                            s = new ScannedStage { StageId = stageId };
+                            stages[stageId] = s;
+                        }
+                        if (!s.Variants.Contains(vm.Value)) s.Variants.Add(vm.Value);
+                        if (rx == PacenoteRx) withPacenotes.Add(stageId);
                     }
-                    if (!s.Variants.Contains(vm.Value)) s.Variants.Add(vm.Value);
                 }
             }
 
@@ -161,11 +172,19 @@ namespace AcrFfbGain
                 perStage[s.StageId] = counts;
             }
 
+            var unreleased = new List<string>();
             foreach (var s in stages.Values)
             {
                 var counts = perStage[s.StageId];
-                if (counts.Count == 0) { s.RallyId = "Other"; continue; }
-                s.RallyId = counts.OrderByDescending(kv => kv.Value).First().Key;
+                bool hasRally = counts.Count > 0;
+                if (hasRally && !withPacenotes.Contains(s.StageId)) { unreleased.Add(s.StageId); continue; }
+                // circuits (no rally) are their own location, e.g. "Livigno"
+                s.RallyId = hasRally ? counts.OrderByDescending(kv => kv.Value).First().Key : s.StageId;
+            }
+            foreach (var id in unreleased)
+            {
+                stages.Remove(id);
+                Log.Write("Scan: skipping '" + id + "' (layout only, no pacenotes yet — not released?)");
             }
 
             // Merge near-identical rally spellings onto the most common one (e.g. future typos).
