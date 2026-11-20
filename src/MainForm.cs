@@ -45,7 +45,7 @@ namespace AcrFfbGain
         public MainForm(AppConfig cfg)
         {
             _cfg = cfg;
-            Text = "AC Rally FFB Gain";
+            Text = AppInfo.Name;
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
             Font = new Font("Segoe UI", 9.5f);
@@ -88,7 +88,7 @@ namespace AcrFfbGain
         {
             // Header: title + what's happening on the left, game status + options on the right.
             var header = new Panel { Dock = DockStyle.Top, Height = 92, BackColor = Theme.Bg };
-            var title = new Label { Text = "FFB Gain", AutoSize = true, Font = new Font("Segoe UI Semibold", 18f), ForeColor = Theme.Text, Left = 18, Top = 14 };
+            var title = new Label { Text = AppInfo.Name, AutoSize = true, Font = new Font("Segoe UI Semibold", 18f), ForeColor = Theme.Text, Left = 18, Top = 14 };
             _lblStage = new Label { AutoSize = true, Left = 21, Top = 56, ForeColor = Theme.Muted, Font = new Font("Segoe UI", 9.5f) };
             _lblGame = new Label { AutoSize = true, Top = 24, Font = new Font("Segoe UI Semibold", 9.5f) };
             _lblApplied = new Label { AutoSize = true, Top = 56, ForeColor = Theme.Muted, Font = new Font("Segoe UI", 9.5f) };
@@ -277,7 +277,7 @@ namespace AcrFfbGain
         void BuildTray()
         {
             _tray.Icon = Icon;
-            _tray.Text = "AC Rally FFB Gain";
+            _tray.Text = AppInfo.Name;
             _tray.Visible = true;
             var menu = new ContextMenuStrip();
             menu.Items.Add("Open", null, delegate { ShowFromTray(); });
@@ -310,7 +310,7 @@ namespace AcrFfbGain
             {
                 e.Cancel = true;
                 Hide();
-                _tray.ShowBalloonTip(3000, "Still running", "AC Rally FFB Gain keeps watching the game from the tray. Right-click the icon to exit.", ToolTipIcon.Info);
+                _tray.ShowBalloonTip(3000, "Still running", AppInfo.Name + " keeps watching the game from the tray. Right-click the icon to exit.", ToolTipIcon.Info);
                 return;
             }
             _poll.Stop();
@@ -441,7 +441,7 @@ namespace AcrFfbGain
 
         /// <summary>
         /// Once per game launch: when the game sits in its menus (telemetry up, no stage) for a few
-        /// seconds, show that the switcher is running.
+        /// seconds, show that StageSwitch is running.
         /// </summary>
         void ShowActivePopupOnce()
         {
@@ -452,9 +452,9 @@ namespace AcrFfbGain
             if (!_cfg.ShowOverlay) return;
 
             int stages = _cfg.Rallies.Sum(r => r.Stages.Count(s => s.Enabled));
-            _overlay.ShowMessage("ON", "FFB gain switcher active",
-                stages + " stages set up  ·  gain changes when a stage loads", true, _cfg.OverlaySeconds);
-            Log.Write("Game in menu: showed 'switcher active' popup");
+            _overlay.ShowMessage("ON", "StageSwitch active",
+                stages + " stages set up  ·  FFB gain changes when a stage loads", true, _cfg.OverlaySeconds);
+            Log.Write("Game in menu: showed 'StageSwitch active' popup");
         }
 
         void ReapplyCurrent()

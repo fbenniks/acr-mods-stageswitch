@@ -44,7 +44,33 @@ namespace AcrFfbGain
 
         public static string Folder
         {
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AC Rally StageSwitch"); }
+        }
+
+        /// <summary>Settings folder used before the rename to StageSwitch (kept as a backup after migrating).</summary>
+        static string OldFolder
+        {
             get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AcrFfbGain"); }
+        }
+
+        /// <summary>Copies settings (and log) from the old "AcrFfbGain" folder the first time the renamed app runs.</summary>
+        static void MigrateFromOldFolder()
+        {
+            try
+            {
+                string oldSettings = Path.Combine(OldFolder, "settings.json");
+                if (File.Exists(FilePath) || !File.Exists(oldSettings)) return;
+                Directory.CreateDirectory(Folder);
+                File.Copy(oldSettings, FilePath);
+                string oldLog = Path.Combine(OldFolder, "log.txt");
+                string newLog = Path.Combine(Folder, "log.txt");
+                if (File.Exists(oldLog) && !File.Exists(newLog)) File.Copy(oldLog, newLog);
+                Log.Write("Settings copied from " + OldFolder + " (old folder kept as backup)");
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Could not copy old settings: " + ex.Message);
+            }
         }
 
         public static string FilePath
@@ -54,6 +80,7 @@ namespace AcrFfbGain
 
         public static AppConfig Load()
         {
+            MigrateFromOldFolder();
             try
             {
                 if (File.Exists(FilePath))

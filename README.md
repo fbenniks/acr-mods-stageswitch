@@ -1,10 +1,10 @@
-# AC Rally FFB Gain
+# AC Rally StageSwitch
 
-Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage, and shows a popup over the game for 10 seconds when it changes it.
+Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage (and optionally per car), and shows a popup over the game for 10 seconds when it changes it.
 
 ## Use
 
-1. Run `AcrFfbGain.exe` (it lives in the system tray; closing the window keeps it running — right-click the tray icon → Exit to quit).
+1. Run `ACRallyStageSwitch.exe` (it lives in the system tray; closing the window keeps it running — right-click the tray icon → Exit to quit).
 2. Set a value (0–200) per stage. The bold rally row sets all stages of that rally at once.
    Untick a stage to leave the game's gain alone there.
    Optional: ⚙ → **Different gain per car** adds a “+ Car” button to each stage, so a car can get its
@@ -31,7 +31,8 @@ Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage, and sho
   The force changes immediately and the settings menu shows the new value.
   If a game update changes that layout, the popup will say the gain was **not** changed.
 
-Settings and log: `%APPDATA%\AcrFfbGain\` (`settings.json`, `log.txt`).
+Settings and log: `%APPDATA%\AC Rally StageSwitch\` (`settings.json`, `log.txt`).
+Settings from before the rename (`%APPDATA%\AcrFfbGain\`) are copied over on first start; the old folder is left as a backup.
 
 ## Build
 
