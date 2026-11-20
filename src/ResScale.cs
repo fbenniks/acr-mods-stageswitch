@@ -18,9 +18,13 @@ namespace AcrFfbGain
 
         public static bool TryRead(out int upscaler, out float resScale)
         {
+            return TryRead(GainWriter.ReadSave(), out upscaler, out resScale);
+        }
+
+        public static bool TryRead(byte[] b, out int upscaler, out float resScale)
+        {
             upscaler = -1;
             resScale = 0;
-            byte[] b = GainWriter.ReadSave();
             if (b == null) return false;
             string s = Encoding.GetEncoding(28591).GetString(b);
             int a = s.IndexOf(Anchor, StringComparison.Ordinal) - 4;   // its length prefix
@@ -74,6 +78,12 @@ namespace AcrFfbGain
         public void Reset()
         {
             lock (_gate) { _pid = 0; _cvar = 0; _menuCopies.Clear(); _menuSearched = false; }
+        }
+
+        /// <summary>True when the graphics menu's own copies are kept in step (so the game saves our value).</summary>
+        public bool HasMenuCopies
+        {
+            get { lock (_gate) return _menuCopies.Count > 0; }
         }
 
         /// <summary>

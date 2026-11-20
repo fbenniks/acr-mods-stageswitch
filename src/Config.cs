@@ -41,6 +41,7 @@ namespace AcrFfbGain
         public bool StartMinimized;
         public int DefaultGain = 100;
         public bool PerCar;        // "Different gain per car" option
+        public bool Learn = true;  // "Learn from in-game changes": settings changed in the game on a stage are stored for that stage
         public List<RallyConfig> Rallies = new List<RallyConfig>();
         public List<CarInfo> Cars = new List<CarInfo>();
 

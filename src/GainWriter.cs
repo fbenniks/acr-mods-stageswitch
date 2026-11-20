@@ -171,20 +171,37 @@ namespace AcrFfbGain
             }
         }
 
-        bool BuildSignature(out string error)
+        static List<int> GainOffsets(byte[] save)
         {
-            error = null;
-            byte[] save = ReadSave();
-            if (save == null) { error = "could not read the game's save file"; return false; }
-
             string s = Encoding.GetEncoding(28591).GetString(save);
             var candidates = new List<int>();
             int normal = s.IndexOf("Normal\0", StringComparison.Ordinal);
             if (normal > 0) candidates.Add(normal + 7 + OffsetFromNormalEnd);
             int custom = s.IndexOf("Custom\0", StringComparison.Ordinal);
             if (custom > 4) candidates.Add(custom - 4 - OffsetBeforeCustom);
+            return candidates.Distinct().ToList();
+        }
 
-            foreach (int k in candidates.Distinct())
+        /// <summary>The FFB gain (0–200) stored in the save file, or null when it can't be found.</summary>
+        public static int? SavedGain(byte[] save)
+        {
+            if (save == null) return null;
+            foreach (int k in GainOffsets(save))
+            {
+                if (k < 0 || k + 4 > save.Length) continue;
+                float g = BitConverter.ToSingle(save, k);
+                if (g >= 0f && g <= 2.0001f) return (int)Math.Round(g * 100);
+            }
+            return null;
+        }
+
+        bool BuildSignature(out string error)
+        {
+            error = null;
+            byte[] save = ReadSave();
+            if (save == null) { error = "could not read the game's save file"; return false; }
+
+            foreach (int k in GainOffsets(save))
             {
                 if (k - Before < 0 || k + After > save.Length) continue;
                 float g = BitConverter.ToSingle(save, k);

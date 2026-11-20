@@ -51,6 +51,16 @@ namespace AcrFfbGain
         DateTime _nextWarmup = DateTime.MinValue;
         readonly System.Windows.Forms.Timer _reapplyTimer = new System.Windows.Forms.Timer();
 
+        // learning: settings changed in the game while on a stage are stored for that stage
+        StageConfig _learnStage;
+        RallyConfig _learnRally;
+        CarInfo _learnCar;
+        bool _learnArmed;
+        DateTime _learnArmAt = DateTime.MinValue;
+        DateTime _learnSaveTime, _learnSeenTime;
+        int _learnGainRef, _learnResRef, _learnResAtArm;
+        bool _learnResFree;
+
         public MainForm(AppConfig cfg)
         {
             _cfg = cfg;
@@ -137,7 +147,34 @@ namespace AcrFfbGain
             _lblGame.SizeChanged += place;
             _lblApplied.SizeChanged += place;
 
-            _lblFooter = new Label { Dock = DockStyle.Bottom, Height = 30, ForeColor = Theme.Faint, Padding = new Padding(20, 0, 0, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Bg, Font = new Font("Segoe UI", 8.5f) };
+            var footer = new Panel { Dock = DockStyle.Bottom, Height = 32, BackColor = Theme.Bg };
+            _lblFooter = new Label { Dock = DockStyle.Fill, ForeColor = Theme.Faint, Padding = new Padding(20, 0, 0, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Bg, Font = new Font("Segoe UI", 8.5f) };
+            var chkLearn = new CheckBox
+            {
+                Text = "Learn from in-game changes", Checked = _cfg.Learn, AutoSize = true, Dock = DockStyle.Right,
+                ForeColor = Theme.Text, BackColor = Theme.Bg, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9f),
+                Padding = new Padding(0, 0, 18, 0), Cursor = Cursors.Hand,
+            };
+            chkLearn.FlatAppearance.BorderColor = Theme.Muted;
+            chkLearn.FlatAppearance.CheckedBackColor = Theme.Bg;
+            new ToolTip { AutoPopDelay = 30000, InitialDelay = 300 }.SetToolTip(chkLearn,
+                "Learn from in-game changes\n\n" +
+                "When this is on, StageSwitch remembers what you change in the game's own settings while\n" +
+                "you are on a stage: change the FFB gain or the resolution in the game's menu and it is\n" +
+                "saved for that stage, and applied automatically the next time you drive it.\n\n" +
+                "With “Different gain per car” on, the FFB gain is saved for the car you're driving on that\n" +
+                "stage. The resolution is always saved for the stage.\n" +
+                "With DLSS the value is rounded to the DLSS presets (e.g. 70% → 67% Quality).\n\n" +
+                "Changes made in the main menu (not on a stage) are not recorded.");
+            chkLearn.CheckedChanged += delegate
+            {
+                _cfg.Learn = chkLearn.Checked;
+                _learnArmed = false;
+                if (_cfg.Learn && _learnStage != null) _learnArmAt = DateTime.Now;
+                QueueSave();
+            };
+            footer.Controls.Add(_lblFooter);
+            footer.Controls.Add(chkLearn);
 
             _list = new FlowLayoutPanel
             {
@@ -151,7 +188,7 @@ namespace AcrFfbGain
             _list.Resize += delegate { FitRows(); };
 
             Controls.Add(_list);
-            Controls.Add(_lblFooter);
+            Controls.Add(footer);
             Controls.Add(header);
         }
 
@@ -361,6 +398,7 @@ namespace AcrFfbGain
                 _lastStageKey = null;
                 _appliedGain = -1;
                 _appliedRes = 0;
+                StopLearning();
                 return;
             }
 
@@ -420,6 +458,7 @@ namespace AcrFfbGain
                 _lastStageKey = null;
                 _lastCar = null;
                 _carWait = 0;
+                StopLearning();
                 ShowActivePopupOnce();
                 return;
             }
@@ -437,6 +476,133 @@ namespace AcrFfbGain
                 _lastCar = snap.Car;
                 OnStageLoaded(snap.Track, snap.Car, true);
             }
+
+            CheckLearning();
+        }
+
+        // ---------------------------------------------------------------- learning
+
+        void StopLearning()
+        {
+            _learnStage = null;
+            _learnArmed = false;
+            _learnArmAt = DateTime.MinValue;
+        }
+
+        static DateTime SaveWriteTime()
+        {
+            try { return System.IO.File.GetLastWriteTimeUtc(GainWriter.SavePath); }
+            catch { return DateTime.MinValue; }
+        }
+
+        /// <summary>
+        /// Takes the starting point for learning on the current stage: what the game holds now.
+        /// After the app applied the stage that is the applied value; for a stage the app leaves alone
+        /// it is whatever is in the game's settings.
+        /// </summary>
+        void ArmLearning()
+        {
+            if (_learnStage == null) return;
+            byte[] save = GainWriter.ReadSave();
+            if (save == null) return;
+            int? g = GainWriter.SavedGain(save);
+            int up; float rf;
+            bool hasRes = GameGraphics.TryRead(save, out up, out rf);
+            _learnSaveTime = _learnSeenTime = SaveWriteTime();
+            _learnResAtArm = hasRes ? (int)Math.Round(rf) : -1;
+            bool fromSave = !_learnStage.Enabled || _appliedGain < 0;
+            if (fromSave)
+            {
+                _learnGainRef = g ?? -1;
+                _learnResRef = hasRes ? AppState.SnapRes(_learnResAtArm) : -1;
+                _learnResFree = true;
+            }
+            else
+            {
+                _learnGainRef = _appliedGain;
+                _learnResRef = _appliedRes;
+                // With the graphics menu kept in step, any save of a different value is the user's.
+                _learnResFree = _resWriter.HasMenuCopies;
+            }
+            _learnArmed = true;
+            Log.Write("Learning armed for " + _learnStage.Id + ": FFB " + _learnGainRef + ", res " + _learnResRef + "% (game menu " + _learnResAtArm + "%)");
+        }
+
+        /// <summary>
+        /// The game rewrites its save file when settings are changed. While on a stage, a value there that
+        /// differs from what the stage should have is a change the user made in the game: store it.
+        /// </summary>
+        void CheckLearning()
+        {
+            if (!_cfg.Learn || _learnStage == null || _applying) return;
+            if (!_learnArmed)
+            {
+                if (_learnArmAt != DateTime.MinValue && DateTime.Now >= _learnArmAt) { _learnArmAt = DateTime.MinValue; ArmLearning(); }
+                return;
+            }
+
+            DateTime t = SaveWriteTime();
+            if (t == _learnSaveTime) return;
+            if (t != _learnSeenTime) { _learnSeenTime = t; return; }   // wait one poll: let the game finish writing
+            _learnSaveTime = t;
+
+            byte[] save = GainWriter.ReadSave();
+            if (save == null) return;
+            _graphicsReadAt = DateTime.MinValue;
+            RefreshGameGraphics();   // upscaler may have changed too (DLSS rounding)
+
+            int? g = GainWriter.SavedGain(save);
+            int up; float rf;
+            bool hasRes = GameGraphics.TryRead(save, out up, out rf);
+            int r = hasRes ? (int)Math.Round(rf) : -1;
+            Log.Write("Game saved its settings on " + _learnStage.Id + ": FFB " + (g.HasValue ? g.Value.ToString() : "?") + ", res " + r + "%");
+
+            int? newGain = null, newRes = null;
+            if (g.HasValue && _learnGainRef >= 0 && g.Value != _learnGainRef) newGain = g.Value;
+            if (hasRes)
+            {
+                int snapped = AppState.SnapRes(r);   // DLSS: 70 -> 67 etc.
+                if (snapped != _learnResRef && (_learnResFree || r != _learnResAtArm)) newRes = snapped;
+                _learnResAtArm = r;
+            }
+            if (newGain.HasValue || newRes.HasValue) LearnFromGame(newGain, newRes);
+        }
+
+        void LearnFromGame(int? gain, int? res)
+        {
+            var stage = _learnStage;
+            var car = _learnCar;
+            bool perCar = _cfg.PerCar && car != null;
+            var parts = new List<string>();
+            if (gain.HasValue)
+            {
+                if (perCar) stage.CarGains[car.Id] = gain.Value;
+                else stage.Gain = gain.Value;
+                _learnGainRef = gain.Value;
+                parts.Add("FFB " + gain.Value);
+            }
+            if (res.HasValue)
+            {
+                stage.ResScale = res.Value;
+                _learnResRef = res.Value;
+                parts.Add("Res " + res.Value + "%" + (AppState.IsDlss ? " " + AppState.DlssName(res.Value) : ""));
+            }
+            if (!stage.Enabled) stage.Enabled = true;
+            _cfg.Save();
+            RebuildList();
+
+            string what = string.Join("  ·  ", parts);
+            string where = _learnRally.Name + "  ·  " + stage.Name + (perCar ? "  ·  " + car.Name : "");
+            Log.Write("Learned from the game: " + what + " for " + where);
+            _lblApplied.Text = "Learned " + what + "  (" + where + ")";
+            if (_cfg.ShowOverlay)
+                _overlay.ShowMessage(gain.HasValue ? gain.Value.ToString() : res.Value.ToString(), "Learned: " + what,
+                    "Saved for " + where + " — applied automatically next time", true, _cfg.OverlaySeconds,
+                    RallyStyle.For(_learnRally.Id, _learnRally.Name), perCar ? car.Name : null);
+
+            // Make the game's memory match (the load-time guard may have put the old resolution back).
+            _appliedGain = -1;
+            if (_lastStageKey != null) OnStageLoaded(_lastStageKey, _lastCar, false, false);
         }
 
         /// <summary>
@@ -543,14 +709,26 @@ namespace AcrFfbGain
             _lblGame.ForeColor = c;
         }
 
-        void OnStageLoaded(string track, string carName, bool isNewLoad)
+        void OnStageLoaded(string track, string carName, bool isNewLoad, bool popup = true)
         {
             RallyConfig rally;
             StageConfig stage = MatchStage(track, out rally);
             CarInfo car = isNewLoad ? LearnCar(carName) : _cfg.FindCar(carName);
             AppState.CurrentCarId = car != null ? car.Id : null;
             if (isNewLoad)
+            {
                 Log.Write("Stage loaded: '" + track + "' car '" + carName + "' -> " + (stage != null ? rally.Id + "/" + stage.Id : rally != null ? rally.Id : "no match"));
+                // Learning only on an exactly known stage. A stage the app leaves alone starts learning
+                // now; otherwise once the stage's values have been applied.
+                StopLearning();
+                if (stage != null)
+                {
+                    _learnStage = stage;
+                    _learnRally = rally;
+                    _learnCar = car;
+                    if (!stage.Enabled) _learnArmAt = DateTime.Now.AddSeconds(3);
+                }
+            }
 
             if (isNewLoad && stage != null) LearnStageName(track, rally, stage);
 
@@ -594,17 +772,17 @@ namespace AcrFfbGain
             _queuedCar = car != null ? car.Name : null;
             res = AppState.SnapRes(res);   // DLSS: nearest preset
             int resWrite = res;
-            QueueApply(gain, res, resWrite, label, isNewLoad);
+            QueueApply(gain, res, resWrite, label, isNewLoad, popup);
         }
 
         /// <summary>Writes the settings on a background thread (finding them in memory can take a few seconds).</summary>
-        void QueueApply(int gain, int res, int resWrite, string label, bool fullRescan)
+        void QueueApply(int gain, int res, int resWrite, string label, bool fullRescan, bool popup)
         {
             _queuedGain = gain;
             _queuedRes = res;
             _queuedResWrite = resWrite;
             _queuedLabel = label;
-            _queuedPopup = true;
+            _queuedPopup = popup;
             if (_applying) return;
             RunApply(fullRescan);
         }
@@ -661,6 +839,9 @@ namespace AcrFfbGain
                         if (ok)
                         {
                             _appliedGain = gain;
+                            // start (or restart) learning from these values once the game has settled
+                            _learnArmed = false;
+                            if (_learnStage != null) _learnArmAt = DateTime.Now.AddSeconds(3);
                             Log.Write("Applied FFB gain " + gain + " for " + label);
                             _lblApplied.Text = "Last change: FFB " + gain + resText + "  (" + label + ")";
                             if (_cfg.ShowOverlay && popup)

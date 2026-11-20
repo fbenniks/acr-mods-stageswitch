@@ -12,6 +12,11 @@ and shows a popup over the game for 10 seconds when it changes them.
    own value there. Cars without their own value use the stage value. Off by default.
 3. Start AC Rally and load a stage: the gain is set and a popup shows the new value.
    Changing the value of the stage you're on in the app applies it immediately.
+4. **Learn from in-game changes** (checkbox bottom right, on by default): change the FFB gain or the
+   resolution in the game's own menu while on a stage and StageSwitch stores it for that stage (for that
+   car on that stage when “Different gain per car” is on) and applies it automatically next time.
+   With DLSS the resolution is rounded to the DLSS presets (70 % → 67 % Quality). It works by watching the
+   game's save file, which the game rewrites when settings change; changes in the main menu are ignored.
 
 ## How it works
 
