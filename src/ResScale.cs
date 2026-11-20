@@ -199,13 +199,26 @@ namespace AcrFfbGain
             return b != null && LooksLikeMenuCopy(b, 0);
         }
 
+        /// <summary>
+        /// The graphics menu keeps its settings as two identical 24-byte records back to back
+        /// ([res][100][16 quality bytes] twice). Matching the doubled record (with real quality levels,
+        /// not all zero) works for any resolution value, including 100 where "[100][100]" alone is common.
+        /// </summary>
+        static bool IsMenuPair(byte[] buf, int i)
+        {
+            if (!LooksLikeMenuCopy(buf, i)) return false;
+            bool anyQuality = false;
+            for (int k = 8; k < 24; k++) if (buf[i + k] != 0) { anyQuality = true; break; }
+            if (!anyQuality) return false;
+            for (int k = 0; k < 24; k++) if (buf[i + k] != buf[i + 24 + k]) return false;
+            return true;
+        }
+
         static List<long> FindMenuCopies(ProcessMemory mem)
         {
-            int up; float saved;
-            if (!GameGraphics.TryRead(out up, out saved)) return new List<long>();
-            int bits = BitConverter.ToInt32(BitConverter.GetBytes(saved), 0);
-            var found = mem.Scan((buf, i, len) =>
-                i + 24 <= len && BitConverter.ToInt32(buf, i) == bits && LooksLikeMenuCopy(buf, i), 16, 0, 24);
+            var pairs = mem.Scan((buf, i, len) => i + 48 <= len && IsMenuPair(buf, i), 16, 0, 48);
+            var found = new List<long>();
+            foreach (var p in pairs) { found.Add(p); found.Add(p + 24); }
             // The game keeps 2-4 copies. Many more means the pattern also matched unrelated data
             // (seen right after start-up): don't write to any of them, the menu just won't update.
             if (found.Count > MaxMenuCopies)
