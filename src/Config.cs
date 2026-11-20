@@ -42,6 +42,7 @@ namespace AcrFfbGain
         public int DefaultGain = 100;
         public bool PerCar;        // "Different gain per car" option
         public bool Learn = true;  // "Learn from in-game changes": settings changed in the game on a stage are stored for that stage
+        public bool ResScaleOn;    // "Resolution scale per stage" (opt-in): off = column hidden, the game's resolution is never touched
         public List<RallyConfig> Rallies = new List<RallyConfig>();
         public List<CarInfo> Cars = new List<CarInfo>();
 
@@ -240,7 +241,7 @@ namespace AcrFfbGain
         /// <summary>A stepper set up for the resolution scale column (DLSS: presets only).</summary>
         public static GainStepper NewResStepper()
         {
-            return new GainStepper { Minimum = 33, Maximum = 200, Suffix = "%", Choices = IsDlss ? DlssPresets : null, Snap = IsDlss ? (Func<int, int>)SnapDlss : null };
+            return new GainStepper { Step = 5, Minimum = 33, Maximum = 200, Suffix = "%", Choices = IsDlss ? DlssPresets : null, Snap = IsDlss ? (Func<int, int>)SnapDlss : null };
         }
     }
 

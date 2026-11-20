@@ -8,13 +8,16 @@ and shows a popup over the game for 10 seconds when it changes them.
 1. Run `ACRallyStageSwitch.exe` (it lives in the system tray; closing the window keeps it running — right-click the tray icon → Exit to quit).
 2. Set a value (0–200) per stage. The bold rally row sets all stages of that rally at once.
    Untick a stage to leave the game's gain alone there.
+   ⚙ opens the Settings window; every option there has a short explanation.
    ⚙ → **Start with Windows** starts it in the tray when you log in.
    Optional: ⚙ → **Different gain per car** adds a “+ Car” button to each stage, so a car can get its
    own value there. Cars without their own value use the stage value. Off by default.
+   Optional: ⚙ → **Resolution scale per stage** adds the Res scale column. Off by default: the app then
+   never touches the game's resolution and doesn't learn it.
 3. Start AC Rally and load a stage: the gain is set and a popup shows the new value.
    Changing the value of the stage you're on in the app applies it immediately.
-4. **Learn from in-game changes** (checkbox bottom right, on by default): change the FFB gain or the
-   resolution in the game's own menu while on a stage and StageSwitch stores it for that stage (for that
+4. ⚙ → **Learn from in-game changes** (on by default): change the FFB gain or
+   (with Resolution scale per stage on) the resolution in the game's own menu while on a stage and StageSwitch stores it for that stage (for that
    car on that stage when “Different gain per car” is on) and applies it automatically next time.
    With DLSS the resolution is rounded to the DLSS presets (70 % → 67 % Quality). It works by watching the
    game's save file, which the game rewrites when settings change; changes in the main menu are ignored.

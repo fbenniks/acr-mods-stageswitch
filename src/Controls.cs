@@ -58,7 +58,7 @@ namespace AcrFfbGain
     }
 
     /// <summary>
-    /// Compact "−  160  +" control. Click −/+ to step by 5 (hold to repeat), click the number to type.
+    /// Compact "−  160  +" control. Click −/+ to step by <see cref="Step"/> (hold to repeat), click the number to type.
     /// </summary>
     public class GainStepper : Control
     {
@@ -68,7 +68,7 @@ namespace AcrFfbGain
         int _pressed = 2;
         readonly Timer _repeat = new Timer();
         TextBox _edit;
-        public int Step = 5;
+        public int Step = 1;
         public int Minimum = 0;
         public int Maximum = 200;
         /// <summary>Value 0 = "—" (leave the game's setting alone). − below Minimum goes to "—".</summary>
@@ -389,6 +389,7 @@ namespace AcrFfbGain
             ResStepper = AppState.NewResStepper();
             ResStepper.Top = (LineH - 34) / 2;
             ResStepper.SetSilently(stage.ResScale);
+            ResStepper.Visible = cfg.ResScaleOn;
             _tip.SetToolTip(ResStepper, AppState.ResTooltip());
 
             // "+ Car" (only with the "Different gain per car" option)
@@ -547,17 +548,18 @@ namespace AcrFfbGain
             if (Stepper == null) return; // called from the base constructor
             Stepper.Left = Width - Stepper.Width - 16;
             ResStepper.Left = Stepper.Left - Theme.ColumnGap - ResStepper.Width;
-            _addCar.Left = ResStepper.Left - _addCar.Width - 14;
+            int edge = _cfg.ResScaleOn ? ResStepper.Left : Stepper.Left;   // left edge of the value columns
+            _addCar.Left = edge - _addCar.Width - 14;
             // Use the setting, not _addCar.Visible: while the rally is folded the row is hidden and every
             // child reports Visible = false, which made the name label cover the "+ Car" link.
-            int titleRight = _cfg.PerCar ? _addCar.Left - 8 : ResStepper.Left - 10;
+            int titleRight = _cfg.PerCar ? _addCar.Left - 8 : edge - 10;
             Title.Width = Math.Max(40, titleRight - Title.Left);
             foreach (var c in _carControls)
             {
                 var gs = c as GainStepper;
                 if (gs != null) gs.Left = Stepper.Right - gs.Width;
                 else if ((c.Tag as string) == "remove") c.Left = Stepper.Left - 6 - 24 - 4 + (Stepper.Width - 120);
-                else c.Width = Math.Max(40, ResStepper.Left - 40 - c.Left);
+                else c.Width = Math.Max(40, edge - 40 - c.Left);
             }
         }
 
@@ -645,6 +647,7 @@ namespace AcrFfbGain
             _resStepper = AppState.NewResStepper();
             _resStepper.Top = (HeaderH - 34) / 2;
             _resStepper.SetSilently(rally.ResScale);
+            _resStepper.Visible = cfg.ResScaleOn;
             _headerTip.SetToolTip(_resStepper, AppState.ResTooltip());
             _header.Controls.Add(_name);
             _header.Controls.Add(_summary);
@@ -671,7 +674,7 @@ namespace AcrFfbGain
                 c.MouseLeave += delegate
                 {
                     var pt = _header.PointToClient(Cursor.Position);
-                    SetHover(_header.ClientRectangle.Contains(pt) && !_stepper.Bounds.Contains(pt) && !_resStepper.Bounds.Contains(pt));
+                    SetHover(_header.ClientRectangle.Contains(pt) && !_stepper.Bounds.Contains(pt) && !(_cfg.ResScaleOn && _resStepper.Bounds.Contains(pt)));
                 };
             }
             _stepper.MouseEnter += delegate { SetHover(false); };
@@ -703,7 +706,8 @@ namespace AcrFfbGain
 
         RectangleF BadgeRect()
         {
-            return new RectangleF(_resStepper.Left - 18 - BadgeW, (HeaderH - BadgeH) / 2f, BadgeW, BadgeH);
+            int edge = _cfg.ResScaleOn ? _resStepper.Left : _stepper.Left;
+            return new RectangleF(edge - 18 - BadgeW, (HeaderH - BadgeH) / 2f, BadgeW, BadgeH);
         }
 
         void SetHover(bool on)
@@ -742,7 +746,8 @@ namespace AcrFfbGain
             else
             {
                 detail = gains.Count == 1 ? "FFB " + gains[0] : "FFB " + gains.Min() + "–" + gains.Max();
-                if (res.Count > 1) detail += "  ·  res per stage";
+                if (!_cfg.ResScaleOn) { }
+                else if (res.Count > 1) detail += "  ·  res per stage";
                 else if (res.Count == 1 && res[0] > 0) detail += "  ·  res " + res[0] + "%";
                 if (on < stages.Count) detail += "  ·  " + (stages.Count - on) + " off";
             }
@@ -892,6 +897,9 @@ namespace AcrFfbGain
     /// <summary>Column titles above the cards, centred over the Res scale and FFB gain columns.</summary>
     public class ColumnHeaderBar : Control
     {
+        /// <summary>False when "Resolution scale per stage" is off: only the FFB GAIN heading.</summary>
+        public bool ShowRes = true;
+
         public ColumnHeaderBar()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
@@ -916,7 +924,8 @@ namespace AcrFfbGain
             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             {
                 g.DrawString("FFB GAIN", f, b, new RectangleF(ffbCenter - 80, 0, 160, Height), sf);
-                if (up == null)
+                if (!ShowRes) { }
+                else if (up == null)
                 {
                     g.DrawString("RES SCALE", f, b, new RectangleF(resCenter - 80, 0, 160, Height), sf);
                 }

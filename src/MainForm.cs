@@ -114,27 +114,8 @@ namespace AcrFfbGain
             _lblGame = new Label { AutoSize = true, Top = 24, Font = new Font("Segoe UI Semibold", 9.5f) };
             _lblApplied = new Label { AutoSize = true, Top = 56, ForeColor = Theme.Muted, Font = new Font("Segoe UI", 9.5f) };
             var btnMenu = new FlatButton("⚙") { AutoSize = false, Size = new Size(38, 34), Top = 17, Font = new Font("Segoe UI Symbol", 13f), Padding = Padding.Empty, BackColor = Theme.Bg };
-            new ToolTip().SetToolTip(btnMenu, "Options");
-
-            var menu = new ContextMenuStrip { Renderer = new ToolStripProfessionalRenderer(new DarkMenuColors()), ShowImageMargin = false, ShowCheckMargin = true, BackColor = Theme.Panel, ForeColor = Theme.Text, Font = new Font("Segoe UI", 9.5f) };
-            var miOverlay = new ToolStripMenuItem("Show popup in game") { CheckOnClick = true, Checked = _cfg.ShowOverlay, ForeColor = Theme.Text };
-            miOverlay.CheckedChanged += delegate { _cfg.ShowOverlay = miOverlay.Checked; QueueSave(); };
-            var miMinimized = new ToolStripMenuItem("Start minimized to tray") { CheckOnClick = true, Checked = _cfg.StartMinimized, ForeColor = Theme.Text };
-            miMinimized.CheckedChanged += delegate { _cfg.StartMinimized = miMinimized.Checked; QueueSave(); };
-            var miAutostart = new ToolStripMenuItem("Start with Windows") { CheckOnClick = true, Checked = Autostart.Enabled, ForeColor = Theme.Text, ToolTipText = "Starts StageSwitch in the tray when you log in to Windows" };
-            miAutostart.CheckedChanged += delegate { if (Autostart.Enabled != miAutostart.Checked) Autostart.Enabled = miAutostart.Checked; };
-            menu.Opening += delegate { miAutostart.Checked = Autostart.Enabled; };
-            menu.Items.Add(miOverlay);
-            menu.Items.Add(miAutostart);
-            menu.Items.Add(miMinimized);
-            var miPerCar = new ToolStripMenuItem("Different gain per car") { CheckOnClick = true, Checked = _cfg.PerCar, ForeColor = Theme.Text, ToolTipText = "Adds a “+ Car” button to every stage so a car can get its own value" };
-            miPerCar.CheckedChanged += delegate { _cfg.PerCar = miPerCar.Checked; QueueSave(); RebuildList(); };
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(miPerCar);
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(new ToolStripMenuItem("Game folder…", null, delegate { ChooseGameFolder(); }) { ForeColor = Theme.Text });
-            menu.Items.Add(new ToolStripMenuItem("Open settings folder", null, delegate { System.Diagnostics.Process.Start("explorer.exe", "\"" + AppConfig.Folder + "\""); }) { ForeColor = Theme.Text });
-            btnMenu.Click += delegate { menu.Show(btnMenu, new Point(btnMenu.Width - menu.Width, btnMenu.Height + 2)); };
+            new ToolTip().SetToolTip(btnMenu, "Settings");
+            btnMenu.Click += delegate { ShowSettings(); };
 
             header.Controls.Add(title);
             header.Controls.Add(_lblStage);
@@ -153,32 +134,7 @@ namespace AcrFfbGain
 
             var footer = new Panel { Dock = DockStyle.Bottom, Height = 32, BackColor = Theme.Bg };
             _lblFooter = new Label { Dock = DockStyle.Fill, ForeColor = Theme.Faint, Padding = new Padding(20, 0, 0, 0), TextAlign = ContentAlignment.MiddleLeft, BackColor = Theme.Bg, Font = new Font("Segoe UI", 8.5f) };
-            var chkLearn = new CheckBox
-            {
-                Text = "Learn from in-game changes", Checked = _cfg.Learn, AutoSize = true, Dock = DockStyle.Right,
-                ForeColor = Theme.Text, BackColor = Theme.Bg, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9f),
-                Padding = new Padding(0, 0, 18, 0), Cursor = Cursors.Hand,
-            };
-            chkLearn.FlatAppearance.BorderColor = Theme.Muted;
-            chkLearn.FlatAppearance.CheckedBackColor = Theme.Bg;
-            new ToolTip { AutoPopDelay = 30000, InitialDelay = 300 }.SetToolTip(chkLearn,
-                "Learn from in-game changes\n\n" +
-                "When this is on, StageSwitch remembers what you change in the game's own settings while\n" +
-                "you are on a stage: change the FFB gain or the resolution in the game's menu and it is\n" +
-                "saved for that stage, and applied automatically the next time you drive it.\n\n" +
-                "With “Different gain per car” on, the FFB gain is saved for the car you're driving on that\n" +
-                "stage. The resolution is always saved for the stage.\n" +
-                "With DLSS the value is rounded to the DLSS presets (e.g. 70% → 67% Quality).\n\n" +
-                "Changes made in the main menu (not on a stage) are not recorded.");
-            chkLearn.CheckedChanged += delegate
-            {
-                _cfg.Learn = chkLearn.Checked;
-                _learnArmed = false;
-                if (_cfg.Learn && _learnStage != null) _learnArmAt = DateTime.Now;
-                QueueSave();
-            };
             footer.Controls.Add(_lblFooter);
-            footer.Controls.Add(chkLearn);
 
             _list = new FlowLayoutPanel
             {
@@ -215,12 +171,12 @@ namespace AcrFfbGain
             {
                 _list.Controls.Add(new Label
                 {
-                    Text = _scanning ? "Scanning game files for stages…" : "No stages found yet. Use “Game folder…” if AC Rally is installed somewhere unusual.",
+                    Text = _scanning ? "Scanning game files for stages…" : "No stages found yet. Set the game folder in Settings (⚙) if AC Rally is installed somewhere unusual.",
                     AutoSize = false, Height = 60, Width = 600, ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft,
                 });
             }
 
-            if (AppState.DlaaLocked)
+            if (_cfg.ResScaleOn && AppState.DlaaLocked)
             {
                 // The game's own DLAA setting blocks the per-stage resolution: big, plain instructions.
                 _list.Controls.Add(new DlaaWarning { Margin = new Padding(0, 8, 0, 6) });
@@ -228,8 +184,9 @@ namespace AcrFfbGain
 
             if (_cfg.Rallies.Count > 0)
             {
-                _columns = new ColumnHeaderBar();
-                new ToolTip { AutoPopDelay = 20000 }.SetToolTip(_columns, AppState.ResTooltip() + "\n\nThe upscaler is read from the game's graphics settings.");
+                _columns = new ColumnHeaderBar { ShowRes = _cfg.ResScaleOn };
+                if (_cfg.ResScaleOn)
+                    new ToolTip { AutoPopDelay = 20000 }.SetToolTip(_columns, AppState.ResTooltip() + "\n\nThe upscaler is read from the game's graphics settings.");
                 _list.Controls.Add(_columns);
             }
 
@@ -251,6 +208,32 @@ namespace AcrFfbGain
             _lblFooter.Text = string.Format("{0} rallies  ·  {1} stages  ·  click a rally to show its stages", _cfg.Rallies.Count, stages);
         }
 
+        /// <summary>
+        /// "Resolution scale per stage" on/off. Off: the column is hidden, the game's resolution is never
+        /// written (a running 45 s guard stops) and resolution changes in the game are not learned.
+        /// </summary>
+        void SetResScaleOn(bool on)
+        {
+            if (_cfg.ResScaleOn == on) return;
+            _cfg.ResScaleOn = on;
+            Log.Write("Resolution scale per stage " + (on ? "on" : "off"));
+            _appliedRes = 0;
+            // restart learning so the reference values match the new setting
+            _learnArmed = false;
+            if (_cfg.Learn && _learnStage != null) _learnArmAt = DateTime.Now.AddSeconds(1);
+            RebuildList();
+            QueueSave();   // on a stage: applies (or stops applying) the stage's resolution
+        }
+
+        /// <summary>"Learn from in-game changes" on/off (on by default).</summary>
+        void SetLearn(bool on)
+        {
+            _cfg.Learn = on;
+            _learnArmed = false;
+            if (_cfg.Learn && _learnStage != null) _learnArmAt = DateTime.Now;
+            QueueSave();
+        }
+
         void QueueSave()
         {
             _saveTimer.Stop();
@@ -258,14 +241,58 @@ namespace AcrFfbGain
             if (_lastStageKey != null) { _reapplyTimer.Stop(); _reapplyTimer.Start(); }
         }
 
-        void ChooseGameFolder()
+        SettingsForm _settings;
+
+        void ShowSettings()
+        {
+            if (_settings != null) { _settings.Activate(); return; }
+            using (var dlg = _settings = new SettingsForm())
+            {
+                dlg.FormClosed += delegate { _settings = null; };
+                dlg.Section("FFB and stages");
+                dlg.Toggle("Different gain per car",
+                    "Adds “+ Car” to each stage so a car can get its own FFB gain there. Other cars use the stage's gain.",
+                    _cfg.PerCar, v => { _cfg.PerCar = v; QueueSave(); RebuildList(); });
+                dlg.Toggle("Resolution scale per stage",
+                    "Adds the Res scale column: each stage gets its own render resolution when it loads. " +
+                    "Off: the game's resolution is never changed.",
+                    _cfg.ResScaleOn, SetResScaleOn);
+                dlg.Toggle("Learn from in-game changes",
+                    "Changes you make in the game's menu while on a stage are saved for that stage and used next time. " +
+                    "Resolution only when that's on.",
+                    _cfg.Learn, SetLearn);
+                dlg.Toggle("Show popup in game",
+                    "Shows the FFB gain that was set over the game when a stage loads, for " + _cfg.OverlaySeconds + " seconds.",
+                    _cfg.ShowOverlay, v => { _cfg.ShowOverlay = v; QueueSave(); });
+
+                dlg.Section("Windows");
+                dlg.Toggle("Start with Windows",
+                    "Starts StageSwitch in the tray when you log in, ready before the game.",
+                    Autostart.Enabled, v => { if (Autostart.Enabled != v) Autostart.Enabled = v; });
+                dlg.Toggle("Start minimized to tray",
+                    "Opens as a tray icon instead of this window. Double‑click the icon to open it.",
+                    _cfg.StartMinimized, v => { _cfg.StartMinimized = v; QueueSave(); });
+
+                dlg.Section("Files");
+                dlg.ButtonRow("Game folder",
+                    "Where AC Rally is installed. Found automatically.",
+                    () => _cfg.GameDir, "Change…", () => ChooseGameFolder(dlg));
+                dlg.ButtonRow("Settings folder",
+                    "Your stage values (settings.json) and log.txt.",
+                    () => AppConfig.Folder, "Open", () => System.Diagnostics.Process.Start("explorer.exe", "\"" + AppConfig.Folder + "\""));
+
+                dlg.ShowDialog(this);
+            }
+        }
+
+        void ChooseGameFolder(IWin32Window owner)
         {
             using (var dlg = new FolderBrowserDialog { Description = "Select the \"Assetto Corsa Rally\" install folder", SelectedPath = _cfg.GameDir ?? "" })
             {
-                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                if (dlg.ShowDialog(owner) != DialogResult.OK) return;
                 if (!StageScanner.IsGameDir(dlg.SelectedPath))
                 {
-                    MessageBox.Show(this, "That folder does not look like the AC Rally install (acr\\Content\\Paks is missing).", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(owner,"That folder does not look like the AC Rally install (acr\\Content\\Paks is missing).", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
                 _cfg.GameDir = dlg.SelectedPath;
@@ -287,7 +314,7 @@ namespace AcrFfbGain
                 string err = null;
                 try
                 {
-                    if (dir == null) err = "AC Rally install folder not found. Use “Game folder…”.";
+                    if (dir == null) err = "AC Rally install folder not found. Set the game folder in Settings (⚙).";
                     else { found = StageScanner.Scan(dir); cars = StageScanner.ScanCars(dir); }
                 }
                 catch (Exception ex) { err = ex.Message; }
@@ -347,6 +374,7 @@ namespace AcrFfbGain
             _tray.Visible = true;
             var menu = new ContextMenuStrip();
             menu.Items.Add("Open", null, delegate { ShowFromTray(); });
+            menu.Items.Add("Settings…", null, delegate { ShowFromTray(); ShowSettings(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Exit", null, delegate { _exiting = true; Close(); });
             _tray.ContextMenuStrip = menu;
@@ -436,7 +464,7 @@ namespace AcrFfbGain
                 var w = new Thread(() =>
                 {
                     bool ffb = _writer.Warmup(pid);
-                    bool res = _resWriter.Warmup(pid);
+                    bool res = !_cfg.ResScaleOn || _resWriter.Warmup(pid);
                     try
                     {
                         BeginInvoke((Action)(() =>
@@ -563,7 +591,7 @@ namespace AcrFfbGain
 
             int? newGain = null, newRes = null;
             if (g.HasValue && _learnGainRef >= 0 && g.Value != _learnGainRef) newGain = g.Value;
-            if (hasRes)
+            if (hasRes && _cfg.ResScaleOn)
             {
                 int snapped = AppState.SnapRes(r);   // DLSS: 70 -> 67 etc.
                 if (snapped != _learnResRef && (_learnResFree || r != _learnResAtArm)) newRes = snapped;
@@ -771,6 +799,7 @@ namespace AcrFfbGain
                 return;
             }
 
+            if (!_cfg.ResScaleOn) res = 0;   // opt-in: leave the game's resolution alone
             if (!isNewLoad && gain == _appliedGain && res == _appliedRes) return;
             _queuedStyle = RallyStyle.For(rally.Id, rally.Name);
             _queuedCar = car != null ? car.Name : null;
@@ -872,7 +901,7 @@ namespace AcrFfbGain
                     var enforcer = new Thread(() =>
                     {
                         DateTime stop = DateTime.Now.AddSeconds(45);
-                        while (DateTime.Now < stop && _applyGen == myGen && Telemetry.FindGame() != null)
+                        while (DateTime.Now < stop && _applyGen == myGen && _cfg.ResScaleOn && Telemetry.FindGame() != null)
                         {
                             _resWriter.Enforce(pid, target);
                             Thread.Sleep(500);
