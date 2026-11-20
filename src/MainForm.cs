@@ -181,22 +181,8 @@ namespace AcrFfbGain
 
             if (AppState.DlaaLocked)
             {
-                // The game's own DLAA setting would block the per-stage resolution: say so plainly.
-                var warn = new Label
-                {
-                    AutoSize = false,
-                    Height = 58,
-                    Width = 600,
-                    Margin = new Padding(0, 6, 0, 4),
-                    Padding = new Padding(12, 0, 12, 0),
-                    BackColor = Color.FromArgb(58, 44, 24),
-                    ForeColor = Color.FromArgb(255, 205, 140),
-                    Font = new Font("Segoe UI", 9.5f),
-                    TextAlign = ContentAlignment.MiddleLeft,
-                    Text = "⚠  The game's own resolution is set to DLSS 100% (DLAA). In that mode DLSS ignores the Res scale from StageSwitch.\n" +
-                           "     Set the resolution in the game's graphics menu to any value below 100% (e.g. 50%) — StageSwitch then sets every stage, including 100% DLAA.",
-                };
-                _list.Controls.Add(warn);
+                // The game's own DLAA setting blocks the per-stage resolution: big, plain instructions.
+                _list.Controls.Add(new DlaaWarning { Margin = new Padding(0, 8, 0, 6) });
             }
 
             if (_cfg.Rallies.Count > 0)
@@ -667,7 +653,7 @@ namespace AcrFfbGain
                         if (resOk) _appliedRes = res;
                         bool locked = AppState.DlaaLocked && resWrite < 100;
                         string resText = resWrite <= 0 ? "" : locked
-                            ? "  ·  Res locked (game on DLAA)"
+                            ? "  ·  Res locked: set the game to 67%"
                             : resOk
                             ? "  ·  Res " + resWrite + "%" + (AppState.UpscalerName != null ? " " + AppState.UpscalerName : "") + (AppState.IsDlss ? " " + AppState.DlssName(resWrite) : "")
                             : "  ·  Res NOT changed";

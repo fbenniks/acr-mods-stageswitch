@@ -834,6 +834,61 @@ namespace AcrFfbGain
         }
     }
 
+    /// <summary>
+    /// Big warning shown while the game's own resolution is DLSS 100 % (DLAA): in that mode the game
+    /// ignores the per-stage resolution. Tells the user exactly what to do.
+    /// </summary>
+    public class DlaaWarning : Control
+    {
+        static readonly Color Bg = Color.FromArgb(74, 30, 26);
+        static readonly Color Edge = Color.FromArgb(232, 72, 72);
+        static readonly Color Title = Color.FromArgb(255, 214, 205);
+        static readonly Color Body = Color.FromArgb(240, 200, 190);
+
+        public DlaaWarning()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            Height = 150;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            g.Clear(Theme.Bg);
+            var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            using (var path = Theme.Round(r, 8))
+            {
+                using (var b = new SolidBrush(Bg)) g.FillPath(b, path);
+                using (var p = new Pen(Edge, 1.5f)) g.DrawPath(p, path);
+            }
+            using (var b = new SolidBrush(Edge)) g.FillRectangle(b, 1, 8, 5, Height - 16);
+
+            // warning triangle
+            float tx = 24, ty = 20, ts = 30;
+            using (var b = new SolidBrush(Edge))
+                g.FillPolygon(b, new[] { new PointF(tx + ts / 2, ty), new PointF(tx + ts, ty + ts * 0.88f), new PointF(tx, ty + ts * 0.88f) });
+            using (var f = new Font("Segoe UI", 13f, FontStyle.Bold))
+            using (var b = new SolidBrush(Color.White))
+                g.DrawString("!", f, b, tx + ts / 2 - 5, ty + 4);
+
+            float x = 68;
+            using (var fTitle = new Font("Segoe UI Semibold", 13f))
+            using (var fBody = new Font("Segoe UI", 10f))
+            using (var fBold = new Font("Segoe UI Semibold", 10f))
+            using (var bTitle = new SolidBrush(Title))
+            using (var bBody = new SolidBrush(Body))
+            using (var bWhite = new SolidBrush(Color.White))
+            {
+                g.DrawString("The game is set to 100% (DLAA) — Res scale can't work like this", fTitle, bTitle, x, 16);
+                g.DrawString("In DLAA mode the game ignores the resolution StageSwitch sets per stage.", fBody, bBody, x, 48);
+                g.DrawString("1.  In the game's graphics menu set the resolution to  67%  and press Apply.", fBold, bWhite, x, 80);
+                g.DrawString("2.  Want DLAA on a stage? Set that stage to  100%  here in StageSwitch.", fBold, bWhite, x, 106);
+            }
+        }
+    }
+
     /// <summary>Column titles above the cards, centred over the Res scale and FFB gain columns.</summary>
     public class ColumnHeaderBar : Control
     {
