@@ -396,6 +396,7 @@ namespace AcrFfbGain
 
             bool on = _cfg.PerCar;
             _addCar.Visible = on;
+            _addCar.BringToFront();
             int y = LineH;
             if (on)
             {
@@ -494,7 +495,9 @@ namespace AcrFfbGain
             if (Stepper == null) return; // called from the base constructor
             Stepper.Left = Width - Stepper.Width - 16;
             _addCar.Left = Stepper.Left - _addCar.Width - 14;
-            int titleRight = _addCar.Visible ? _addCar.Left - 8 : Stepper.Left - 10;
+            // Use the setting, not _addCar.Visible: while the rally is folded the row is hidden and every
+            // child reports Visible = false, which made the name label cover the "+ Car" link.
+            int titleRight = _cfg.PerCar ? _addCar.Left - 8 : Stepper.Left - 10;
             Title.Width = Math.Max(40, titleRight - Title.Left);
             foreach (var c in _carControls)
             {
