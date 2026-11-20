@@ -8,6 +8,7 @@ and shows a popup over the game for 10 seconds when it changes them.
 1. Run `ACRallyStageSwitch.exe` (it lives in the system tray; closing the window keeps it running — right-click the tray icon → Exit to quit).
 2. Set a value (0–200) per stage. The bold rally row sets all stages of that rally at once.
    Untick a stage to leave the game's gain alone there.
+   ⚙ → **Start with Windows** starts it in the tray when you log in.
    Optional: ⚙ → **Different gain per car** adds a “+ Car” button to each stage, so a car can get its
    own value there. Cars without their own value use the stage value. Off by default.
 3. Start AC Rally and load a stage: the gain is set and a popup shows the new value.

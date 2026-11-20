@@ -121,7 +121,11 @@ namespace AcrFfbGain
             miOverlay.CheckedChanged += delegate { _cfg.ShowOverlay = miOverlay.Checked; QueueSave(); };
             var miMinimized = new ToolStripMenuItem("Start minimized to tray") { CheckOnClick = true, Checked = _cfg.StartMinimized, ForeColor = Theme.Text };
             miMinimized.CheckedChanged += delegate { _cfg.StartMinimized = miMinimized.Checked; QueueSave(); };
+            var miAutostart = new ToolStripMenuItem("Start with Windows") { CheckOnClick = true, Checked = Autostart.Enabled, ForeColor = Theme.Text, ToolTipText = "Starts StageSwitch in the tray when you log in to Windows" };
+            miAutostart.CheckedChanged += delegate { if (Autostart.Enabled != miAutostart.Checked) Autostart.Enabled = miAutostart.Checked; };
+            menu.Opening += delegate { miAutostart.Checked = Autostart.Enabled; };
             menu.Items.Add(miOverlay);
+            menu.Items.Add(miAutostart);
             menu.Items.Add(miMinimized);
             var miPerCar = new ToolStripMenuItem("Different gain per car") { CheckOnClick = true, Checked = _cfg.PerCar, ForeColor = Theme.Text, ToolTipText = "Adds a “+ Car” button to every stage so a car can get its own value" };
             miPerCar.CheckedChanged += delegate { _cfg.PerCar = miPerCar.Checked; QueueSave(); RebuildList(); };
