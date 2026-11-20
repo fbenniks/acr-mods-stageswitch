@@ -31,9 +31,9 @@ and shows a popup over the game for 10 seconds when it changes them.
   file as a fingerprint, finds the copies in the game's memory and writes the new value (150 = 1.5).
   The force changes immediately and the settings menu shows the new value.
   If a game update changes that layout, the popup will say the gain was **not** changed.
-- **Resolution scale** (33–200 %, "—" = keep the game's own setting) – written live to the engine's
-  `r.ScreenPercentage` console variable, found by its help text, plus the game's menu copies so the graphics menu
-  shows the same value. Setting a stage back to "—" restores the value from the game's menu.
+- **Resolution scale** (33–200 %, every stage has a value; new stages start at the game's own menu value) – written
+  live to the engine's `r.ScreenPercentage` console variable, found by its help text, plus the game's menu copies so
+  the graphics menu shows the same value.
   The upscaler shown in the column title (TSR / DLSS / XeSS / FSR = 2 / 3 / 4 / 5) is read from the save file.
   With DLSS the game itself rounds menu values to DLSS presets (e.g. 63 % → 66.7 %); the app writes the exact value.
 

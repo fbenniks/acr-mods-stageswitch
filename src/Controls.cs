@@ -369,7 +369,7 @@ namespace AcrFfbGain
             ResStepper = AppState.NewResStepper();
             ResStepper.Top = (LineH - 34) / 2;
             ResStepper.SetSilently(stage.ResScale);
-            _tip.SetToolTip(ResStepper, "Render resolution scale on this stage. — = keep the game's setting");
+            _tip.SetToolTip(ResStepper, "Render resolution scale on this stage (33–200%)");
 
             // "+ Car" (only with the "Different gain per car" option)
             _addCar = new LinkLabel

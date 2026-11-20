@@ -64,6 +64,7 @@ namespace AcrFfbGain
             BuildUi();
             BuildTray();
             RefreshGameGraphics();
+            if (_cfg.FillMissingResScale(AppState.GameResScale)) _cfg.Save();
             RebuildList();
 
             _saveTimer.Interval = 800;
@@ -179,7 +180,7 @@ namespace AcrFfbGain
             if (_cfg.Rallies.Count > 0)
             {
                 _columns = new ColumnHeaderBar();
-                new ToolTip().SetToolTip(_columns, "Res scale: render resolution per stage (— = keep the game's setting). Upscaler is read from the game's graphics settings.");
+                new ToolTip().SetToolTip(_columns, "Res scale: render resolution per stage (33–200%). The upscaler is read from the game's graphics settings.");
                 _list.Controls.Add(_columns);
             }
 
@@ -259,6 +260,7 @@ namespace AcrFfbGain
                         int added = StageScanner.Merge(_cfg, found);
                         int carsAdded = StageScanner.MergeCars(_cfg, cars);
                         if (first) ApplyFirstRunDefaults();
+                        _cfg.FillMissingResScale(AppState.GameResScale);
                         _cfg.Save();
                         RebuildList();
                         Log.Write("Scan: " + found.Count + " stages, " + added + " new; " + cars.Count + " cars, " + carsAdded + " new");
@@ -375,7 +377,7 @@ namespace AcrFfbGain
 
             // While the game sits in its menus, find the render-scale setting in the background once,
             // so changing it on the first stage is instant.
-            if (!_warmedUp && _cfg.Rallies.Any(r => r.Stages.Any(s => s.ResScale > 0)))
+            if (!_warmedUp)
             {
                 _warmedUp = true;
                 int pid = snap.ProcessId;
@@ -561,8 +563,7 @@ namespace AcrFfbGain
             if (!isNewLoad && gain == _appliedGain && res == _appliedRes) return;
             _queuedStyle = RallyStyle.For(rally.Id, rally.Name);
             _queuedCar = car != null ? car.Name : null;
-            // "—" after the app changed the resolution earlier: hand it back to the game's own menu value
-            int resWrite = res > 0 ? res : (_appliedRes > 0 ? AppState.GameResScale : 0);
+            int resWrite = res;
             QueueApply(gain, res, resWrite, label, isNewLoad);
         }
 

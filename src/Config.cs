@@ -11,7 +11,7 @@ namespace AcrFfbGain
         public string Name;        // display name, e.g. "Hafren North"
         public bool Enabled = true;
         public int Gain = 100;
-        public int ResScale;       // render resolution scale in % (33–200); 0 = leave the game's setting alone
+        public int ResScale;       // render resolution scale in % (33–200); 0 only until filled in from the game's setting
         public bool Detected;      // true when added from telemetry rather than from the game files
         public bool NameFromGame;  // Name was taken from what the game reports for this stage
         public Dictionary<string, int> CarGains = new Dictionary<string, int>(); // optional per-car values (car Id -> gain)
@@ -29,7 +29,7 @@ namespace AcrFfbGain
         public string Id;          // e.g. "Wales"
         public string Name;        // e.g. "Wales"
         public int Gain = 100;
-        public int ResScale;       // 0 = leave alone
+        public int ResScale;       // render resolution scale in % for all stages
         public List<StageConfig> Stages = new List<StageConfig>();
     }
 
@@ -125,6 +125,19 @@ namespace AcrFfbGain
             }
         }
 
+        /// <summary>Every stage has a resolution scale: new ones start at the game's own menu value.</summary>
+        public bool FillMissingResScale(int gameValue)
+        {
+            int v = Math.Max(33, Math.Min(200, gameValue));
+            bool changed = false;
+            foreach (var r in Rallies)
+            {
+                foreach (var s in r.Stages) if (s.ResScale <= 0) { s.ResScale = r.ResScale > 0 ? r.ResScale : v; changed = true; }
+                if (r.ResScale <= 0) { r.ResScale = r.Stages.Count > 0 ? r.Stages[0].ResScale : v; changed = true; }
+            }
+            return changed;
+        }
+
         public CarInfo FindCar(string idOrName)
         {
             string n = StageScanner.Norm(idOrName);
@@ -157,7 +170,7 @@ namespace AcrFfbGain
         /// <summary>A stepper set up for the resolution scale column.</summary>
         public static GainStepper NewResStepper()
         {
-            return new GainStepper { Minimum = 33, Maximum = 200, AllowEmpty = true, EmptyStart = ResStart, Suffix = "%" };
+            return new GainStepper { Minimum = 33, Maximum = 200, Suffix = "%" };
         }
     }
 
