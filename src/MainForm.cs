@@ -47,6 +47,8 @@ namespace AcrFfbGain
         int _queuedResWrite;
         volatile int _applyGen;
         bool _warmedUp;
+        bool _warming;
+        DateTime _nextWarmup = DateTime.MinValue;
         readonly System.Windows.Forms.Timer _reapplyTimer = new System.Windows.Forms.Timer();
 
         public MainForm(AppConfig cfg)
@@ -362,6 +364,7 @@ namespace AcrFfbGain
                 _writer.Reset();
                 _resWriter.Reset();
                 _warmedUp = false;
+                _nextWarmup = DateTime.Now.AddSeconds(5); // let the game finish starting up first
                 _lastStageKey = null;
                 _menuSince = DateTime.MinValue;
                 _activePopupShown = false;
@@ -375,13 +378,29 @@ namespace AcrFfbGain
                 return;
             }
 
-            // While the game sits in its menus, find the render-scale setting in the background once,
-            // so changing it on the first stage is instant.
-            if (!_warmedUp)
+            // While the game runs, find the FFB and render-scale settings in the background so applying
+            // them on a stage load is instant. Early in the game's start-up they may not exist yet:
+            // retry every 10 s until both are found.
+            if (!_warmedUp && !_warming && DateTime.Now >= _nextWarmup)
             {
-                _warmedUp = true;
+                _warming = true;
                 int pid = snap.ProcessId;
-                var w = new Thread(() => { _resWriter.Warmup(pid); }) { IsBackground = true };
+                var w = new Thread(() =>
+                {
+                    bool ffb = _writer.Warmup(pid);
+                    bool res = _resWriter.Warmup(pid);
+                    try
+                    {
+                        BeginInvoke((Action)(() =>
+                        {
+                            _warming = false;
+                            if (pid != _lastPid) return;
+                            if (ffb && res) { _warmedUp = true; Log.Write("Warm-up done: stage loads apply instantly"); }
+                            else _nextWarmup = DateTime.Now.AddSeconds(10);
+                        }));
+                    }
+                    catch (InvalidOperationException) { }
+                }) { IsBackground = true };
                 w.Start();
             }
 

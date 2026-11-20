@@ -63,19 +63,24 @@ namespace AcrFfbGain
     {
         const string HelpStart = "To render in lower resolution and upscale";
         const int ValueOffset = 80;   // value pair relative to the object start (vtable)
+        const int MaxMenuCopies = 6;
 
         readonly object _gate = new object();
         int _pid;
         long _cvar;                               // address of the first float of the value pair
         readonly List<long> _menuCopies = new List<long>();
+        bool _menuSearched;
 
         public void Reset()
         {
-            lock (_gate) { _pid = 0; _cvar = 0; _menuCopies.Clear(); }
+            lock (_gate) { _pid = 0; _cvar = 0; _menuCopies.Clear(); _menuSearched = false; }
         }
 
-        /// <summary>Finds the render-scale setting ahead of time (it takes a few seconds), without changing it.</summary>
-        public void Warmup(int pid)
+        /// <summary>
+        /// Finds the render-scale setting ahead of time (it takes a few seconds), without changing it.
+        /// Returns true once it is found; call again later if not (early in the game's start-up it may not exist yet).
+        /// </summary>
+        public bool Warmup(int pid)
         {
             lock (_gate)
             {
@@ -83,13 +88,15 @@ namespace AcrFfbGain
                 {
                     using (var mem = new ProcessMemory(pid))
                     {
-                        if (pid != _pid) { _pid = pid; _cvar = 0; _menuCopies.Clear(); }
+                        if (pid != _pid) { _pid = pid; _cvar = 0; _menuCopies.Clear(); _menuSearched = false; }
+                        if (_cvar != 0 && !IsCvar(mem, _cvar, Module(pid))) _cvar = 0;
                         if (_cvar == 0) _cvar = FindCvar(mem, pid);
-                        if (_menuCopies.Count == 0) _menuCopies.AddRange(FindMenuCopies(mem));
+                        if (_cvar != 0 && _menuCopies.Count == 0 && !_menuSearched) { _menuCopies.AddRange(FindMenuCopies(mem)); _menuSearched = true; }
                         Log.Write("ResScale warm-up: r.ScreenPercentage " + (_cvar != 0 ? "found" : "not found yet") + ", " + _menuCopies.Count + " menu copies");
+                        return _cvar != 0;
                     }
                 }
-                catch (Exception ex) { Log.Write("ResScale warm-up: " + ex.Message); }
+                catch (Exception ex) { Log.Write("ResScale warm-up: " + ex.Message); return false; }
             }
         }
 
@@ -103,7 +110,7 @@ namespace AcrFfbGain
                 {
                     using (var mem = new ProcessMemory(pid))
                     {
-                        if (pid != _pid) { _pid = pid; _cvar = 0; _menuCopies.Clear(); }
+                        if (pid != _pid) { _pid = pid; _cvar = 0; _menuCopies.Clear(); _menuSearched = false; }
                         if (_cvar == 0 || !IsCvar(mem, _cvar, Module(pid)))
                         {
                             _cvar = FindCvar(mem, pid);
@@ -115,9 +122,9 @@ namespace AcrFfbGain
                         bool ok = mem.Write(_cvar, bytes) & mem.Write(_cvar + 4, bytes);
                         if (!ok) { error = "could not write to game memory"; return false; }
 
-                        // menu copies: found once per game launch from the save file's value
+                        // menu copies: searched once per game launch (keeps the graphics menu in step)
                         _menuCopies.RemoveAll(a => !IsMenuCopy(mem, a));
-                        if (_menuCopies.Count == 0) _menuCopies.AddRange(FindMenuCopies(mem));
+                        if (_menuCopies.Count == 0 && !_menuSearched) { _menuCopies.AddRange(FindMenuCopies(mem)); _menuSearched = true; }
                         foreach (var a in _menuCopies) mem.Write(a, bytes);
                         return true;
                     }
@@ -199,6 +206,13 @@ namespace AcrFfbGain
             int bits = BitConverter.ToInt32(BitConverter.GetBytes(saved), 0);
             var found = mem.Scan((buf, i, len) =>
                 i + 24 <= len && BitConverter.ToInt32(buf, i) == bits && LooksLikeMenuCopy(buf, i), 16, 0, 24);
+            // The game keeps 2-4 copies. Many more means the pattern also matched unrelated data
+            // (seen right after start-up): don't write to any of them, the menu just won't update.
+            if (found.Count > MaxMenuCopies)
+            {
+                Log.Write("ResScale: " + found.Count + " possible menu copies — too many to be sure, not using them");
+                return new List<long>();
+            }
             Log.Write("ResScale: " + found.Count + " menu copies");
             return found;
         }

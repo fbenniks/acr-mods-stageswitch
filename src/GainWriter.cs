@@ -122,6 +122,36 @@ namespace AcrFfbGain
             }
         }
 
+        /// <summary>
+        /// Finds the settings copies ahead of time (without changing anything) so applying on a stage
+        /// load is instant. Returns true once they are found.
+        /// </summary>
+        public bool Warmup(int pid)
+        {
+            lock (_gate)
+            {
+                try
+                {
+                    using (var mem = new ProcessMemory(pid))
+                    {
+                        if (pid != _pid) { _pid = pid; _addresses.Clear(); }
+                        if (_sigIdx != null) _addresses = _addresses.Where(a => Matches(mem, a)).ToList();
+                        if (_addresses.Count > 0) return true;
+                        string error;
+                        if (!BuildSignature(out error)) return false;
+                        _addresses.AddRange(Find(mem));
+                        Log.Write("GainWriter warm-up: " + _addresses.Count + " settings copies");
+                        return _addresses.Count > 0;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Write("GainWriter warm-up: " + ex.Message);
+                    return false;
+                }
+            }
+        }
+
         /// <summary>Reads the gain the game currently uses (0–200), or null.</summary>
         public int? ReadCurrent(int pid)
         {
