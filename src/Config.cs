@@ -167,10 +167,72 @@ namespace AcrFfbGain
         /// <summary>Starting value when a resolution scale is first set for a stage.</summary>
         public static int ResStart() { return Math.Max(33, Math.Min(200, GameResScale)); }
 
-        /// <summary>A stepper set up for the resolution scale column.</summary>
+        /// <summary>DLSS resolution presets (shown values) and the exact ratios DLSS uses.</summary>
+        public static readonly int[] DlssPresets = { 33, 50, 58, 67, 100 };
+        static readonly string[] DlssNames = { "Ultra Performance", "Performance", "Balanced", "Quality", "DLAA" };
+        static readonly float[] DlssExact = { 100f / 3f, 50f, 58f, 200f / 3f, 100f };
+
+        public static bool IsDlss { get { return UpscalerName == "DLSS"; } }
+
+        /// <summary>
+        /// Stored stage value -> the value used with the current upscaler. With DLSS this copies what the
+        /// game itself does (measured in-game): nearest preset below 100 %, DLAA only at 100 % and above.
+        ///   33-34 -> 33.3 | 45-51 -> 50 | 55-60 -> 58 | 63-99 -> 66.7 | 100+ -> 100
+        /// </summary>
+        public static int SnapRes(int v)
+        {
+            if (!IsDlss) return v;
+            return SnapDlss(v);
+        }
+
+        public static int SnapDlss(int v)
+        {
+            if (v >= 100) return 100;
+            int best = DlssPresets[0];
+            for (int i = 0; i < DlssPresets.Length - 1; i++)  // all presets except DLAA
+                if (Math.Abs(DlssPresets[i] - v) < Math.Abs(best - v)) best = DlssPresets[i];
+            return best;
+        }
+
+        /// <summary>The exact percentage written to the game (DLSS Quality = 66.67 %, not 67).</summary>
+        public static float ResWriteValue(int v)
+        {
+            if (!IsDlss) return v;
+            int i = Array.IndexOf(DlssPresets, SnapRes(v));
+            return DlssExact[i];
+        }
+
+        public static string DlssName(int v)
+        {
+            int i = Array.IndexOf(DlssPresets, SnapRes(v));
+            return i >= 0 ? DlssNames[i] : null;
+        }
+
+        /// <summary>Tooltip for the Res scale column; lists the DLSS presets while DLSS is selected.</summary>
+        public static string ResTooltip()
+        {
+            string t = "Render resolution scale (33–200%).";
+            if (IsDlss)
+            {
+                t = "Render resolution scale.\n\nWith DLSS the game only uses DLSS presets, so − / + step through them:\n" +
+                    "   33%   Ultra Performance\n" +
+                    "   50%   Performance\n" +
+                    "   58%   Balanced\n" +
+                    "   67%   Quality\n" +
+                    " 100%   DLAA\n\n" +
+                    "In the game's own menu other values are rounded the same way: anything from about\n" +
+                    "63% to 99% (including the Ultra preset's 80%) is really Quality, 100% and up is DLAA.\n\n" +
+                    "Other upscalers (TSR, FSR, XeSS) allow any value from 33 to 200%.";
+            }
+            else if (UpscalerName != null)
+                t += "\nUpscaler: " + UpscalerName + " (from the game's graphics settings).";
+            return t;
+        }
+
+        /// <summary>A stepper set up for the resolution scale column (DLSS: presets only).</summary>
         public static GainStepper NewResStepper()
         {
-            return new GainStepper { Minimum = 33, Maximum = 200, Suffix = "%" };
+            return new GainStepper { Minimum = 33, Maximum = 200, Suffix = "%", Choices = IsDlss ? DlssPresets : null, Snap = IsDlss ? (Func<int, int>)SnapDlss : null };
         }
     }
 

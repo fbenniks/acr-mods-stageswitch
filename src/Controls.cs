@@ -76,6 +76,10 @@ namespace AcrFfbGain
         /// <summary>Value used when + is pressed on "—".</summary>
         public Func<int> EmptyStart;
         public string Suffix = "";
+        /// <summary>When set, only these values are possible (e.g. DLSS presets); − / + step between them.</summary>
+        public int[] Choices;
+        /// <summary>How a typed value maps onto <see cref="Choices"/> (default: nearest).</summary>
+        public Func<int, int> Snap;
         public event EventHandler ValueChanged;
 
         public bool IsEmpty { get { return AllowEmpty && _value == 0; } }
@@ -83,7 +87,16 @@ namespace AcrFfbGain
         int Clamp(int v)
         {
             if (AllowEmpty && v <= 0) return 0;
+            if (Choices != null && Choices.Length > 0) return Nearest(v);
             return Math.Max(Minimum, Math.Min(Maximum, v));
+        }
+
+        int Nearest(int v)
+        {
+            if (Snap != null) return Snap(v);
+            int best = Choices[0];
+            foreach (int c in Choices) if (Math.Abs(c - v) < Math.Abs(best - v)) best = c;
+            return best;
         }
 
         public GainStepper()
@@ -131,6 +144,13 @@ namespace AcrFfbGain
             if (IsEmpty || _mixed && AllowEmpty && _value == 0)
             {
                 if (dir > 0) Value = EmptyStart != null ? EmptyStart() : Maximum / 2;
+                return;
+            }
+            if (Choices != null && Choices.Length > 0)
+            {
+                int i = Array.IndexOf(Choices, Nearest(_value)) + (dir > 0 ? 1 : -1);
+                if (_mixed) i = Array.IndexOf(Choices, Nearest(_value));
+                if (i >= 0 && i < Choices.Length) Value = Choices[i];
                 return;
             }
             // Snap to the step grid: 147 -> 150 / 145
@@ -333,7 +353,7 @@ namespace AcrFfbGain
         public readonly GainStepper Stepper;      // FFB gain
         public readonly GainStepper ResStepper;   // resolution scale
         public event EventHandler Changed;
-        readonly ToolTip _tip = new ToolTip();
+        readonly ToolTip _tip = new ToolTip { AutoPopDelay = 20000 };
         readonly AppConfig _cfg;
         readonly LinkLabel _addCar;
         readonly List<Control> _carControls = new List<Control>();
@@ -369,7 +389,7 @@ namespace AcrFfbGain
             ResStepper = AppState.NewResStepper();
             ResStepper.Top = (LineH - 34) / 2;
             ResStepper.SetSilently(stage.ResScale);
-            _tip.SetToolTip(ResStepper, "Render resolution scale on this stage (33–200%)");
+            _tip.SetToolTip(ResStepper, AppState.ResTooltip());
 
             // "+ Car" (only with the "Different gain per car" option)
             _addCar = new LinkLabel
@@ -574,6 +594,7 @@ namespace AcrFfbGain
         readonly Label _summary;
         readonly GainStepper _stepper;      // FFB gain, all stages
         readonly GainStepper _resStepper;   // resolution scale, all stages
+        readonly ToolTip _headerTip = new ToolTip { AutoPopDelay = 20000 };
         readonly List<StageRow> _rows = new List<StageRow>();
         readonly RallyStyle _style;
         readonly Color _strip;
@@ -624,6 +645,7 @@ namespace AcrFfbGain
             _resStepper = AppState.NewResStepper();
             _resStepper.Top = (HeaderH - 34) / 2;
             _resStepper.SetSilently(rally.ResScale);
+            _headerTip.SetToolTip(_resStepper, AppState.ResTooltip());
             _header.Controls.Add(_name);
             _header.Controls.Add(_summary);
             _header.Controls.Add(_resStepper);
@@ -714,7 +736,7 @@ namespace AcrFfbGain
             int on = stages.Count(s => s.Enabled);
             var gains = stages.Where(s => s.Enabled).Select(s => s.Gain).Distinct().ToList();
             string count = stages.Count == 1 ? "1 stage" : stages.Count + " stages";
-            var res = stages.Where(s => s.Enabled).Select(s => s.ResScale).Distinct().ToList();
+            var res = stages.Where(s => s.Enabled).Select(s => AppState.SnapRes(s.ResScale)).Distinct().ToList();
             string detail;
             if (on == 0) detail = "all off";
             else
@@ -730,7 +752,7 @@ namespace AcrFfbGain
 
             if (gains.Count == 1 && gains[0] != Rally.Gain) { Rally.Gain = gains[0]; _stepper.SetSilently(gains[0]); }
             _stepper.Mixed = gains.Count > 1;
-            if (res.Count == 1 && res[0] != Rally.ResScale) { Rally.ResScale = res[0]; _resStepper.SetSilently(res[0]); }
+            if (res.Count == 1 && res[0] != AppState.SnapRes(Rally.ResScale)) { Rally.ResScale = res[0]; _resStepper.SetSilently(res[0]); }
             _resStepper.Mixed = res.Count > 1;
         }
 

@@ -93,12 +93,12 @@ namespace AcrFfbGain
             }
         }
 
-        public bool Apply(int pid, int percent, out string error)
+        public bool Apply(int pid, float percent, out string error)
         {
             lock (_gate)
             {
                 error = null;
-                float v = Math.Max(33, Math.Min(200, percent));
+                float v = Math.Max(33f, Math.Min(200f, percent));
                 try
                 {
                     using (var mem = new ProcessMemory(pid))

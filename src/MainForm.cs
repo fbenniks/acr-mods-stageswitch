@@ -180,7 +180,7 @@ namespace AcrFfbGain
             if (_cfg.Rallies.Count > 0)
             {
                 _columns = new ColumnHeaderBar();
-                new ToolTip().SetToolTip(_columns, "Res scale: render resolution per stage (33–200%). The upscaler is read from the game's graphics settings.");
+                new ToolTip { AutoPopDelay = 20000 }.SetToolTip(_columns, AppState.ResTooltip() + "\n\nThe upscaler is read from the game's graphics settings.");
                 _list.Controls.Add(_columns);
             }
 
@@ -497,9 +497,12 @@ namespace AcrFfbGain
             if (!GameGraphics.TryRead(out up, out res)) return;
             int r = (int)Math.Round(res);
             if (up == AppState.Upscaler && r == AppState.GameResScale) return;
+            bool upscalerChanged = up != AppState.Upscaler;
             AppState.Upscaler = up;
             AppState.GameResScale = r;
-            if (_columns != null) _columns.Invalidate();
+            // DLSS presets vs. free values: rebuild the controls when the upscaler changes
+            if (upscalerChanged && _list != null && _list.Controls.Count > 0) RebuildList();
+            else if (_columns != null) _columns.Invalidate();
         }
 
         void ReapplyCurrent()
@@ -563,6 +566,7 @@ namespace AcrFfbGain
             if (!isNewLoad && gain == _appliedGain && res == _appliedRes) return;
             _queuedStyle = RallyStyle.For(rally.Id, rally.Name);
             _queuedCar = car != null ? car.Name : null;
+            res = AppState.SnapRes(res);   // DLSS: nearest preset
             int resWrite = res;
             QueueApply(gain, res, resWrite, label, isNewLoad);
         }
@@ -612,7 +616,7 @@ namespace AcrFfbGain
 
                 // Resolution scale (optional per stage)
                 string resErr = null;
-                bool resOk = resWrite <= 0 || _resWriter.Apply(pid, resWrite, out resErr);
+                bool resOk = resWrite <= 0 || _resWriter.Apply(pid, AppState.ResWriteValue(resWrite), out resErr);
                 if (resWrite > 0) Log.Write(resOk ? "Applied res scale " + resWrite + "%" + (res == 0 ? " (back to the game's setting)" : "") + " for " + label : "Failed to apply res scale " + resWrite + "%: " + resErr);
 
                 try
@@ -622,7 +626,7 @@ namespace AcrFfbGain
                         _applying = false;
                         if (resOk) _appliedRes = res;
                         string resText = resWrite <= 0 ? "" : resOk
-                            ? "  ·  Res " + resWrite + "%" + (AppState.UpscalerName != null ? " " + AppState.UpscalerName : "")
+                            ? "  ·  Res " + resWrite + "%" + (AppState.UpscalerName != null ? " " + AppState.UpscalerName : "") + (AppState.IsDlss ? " " + AppState.DlssName(resWrite) : "")
                             : "  ·  Res NOT changed";
                         if (ok)
                         {
