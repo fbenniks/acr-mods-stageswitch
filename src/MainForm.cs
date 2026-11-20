@@ -179,6 +179,26 @@ namespace AcrFfbGain
                 });
             }
 
+            if (AppState.DlaaLocked)
+            {
+                // The game's own DLAA setting would block the per-stage resolution: say so plainly.
+                var warn = new Label
+                {
+                    AutoSize = false,
+                    Height = 58,
+                    Width = 600,
+                    Margin = new Padding(0, 6, 0, 4),
+                    Padding = new Padding(12, 0, 12, 0),
+                    BackColor = Color.FromArgb(58, 44, 24),
+                    ForeColor = Color.FromArgb(255, 205, 140),
+                    Font = new Font("Segoe UI", 9.5f),
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Text = "⚠  The game's own resolution is set to DLSS 100% (DLAA). In that mode DLSS ignores the Res scale from StageSwitch.\n" +
+                           "     Set the resolution in the game's graphics menu to any value below 100% (e.g. 50%) — StageSwitch then sets every stage, including 100% DLAA.",
+                };
+                _list.Controls.Add(warn);
+            }
+
             if (_cfg.Rallies.Count > 0)
             {
                 _columns = new ColumnHeaderBar();
@@ -517,10 +537,11 @@ namespace AcrFfbGain
             int r = (int)Math.Round(res);
             if (up == AppState.Upscaler && r == AppState.GameResScale) return;
             bool upscalerChanged = up != AppState.Upscaler;
+            bool lockWas = AppState.DlaaLocked;
             AppState.Upscaler = up;
             AppState.GameResScale = r;
-            // DLSS presets vs. free values: rebuild the controls when the upscaler changes
-            if (upscalerChanged && _list != null && _list.Controls.Count > 0) RebuildList();
+            // DLSS presets vs. free values, DLAA warning: rebuild the controls when either changes
+            if ((upscalerChanged || lockWas != AppState.DlaaLocked) && _list != null && _list.Controls.Count > 0) RebuildList();
             else if (_columns != null) _columns.Invalidate();
         }
 
@@ -644,9 +665,13 @@ namespace AcrFfbGain
                     {
                         _applying = false;
                         if (resOk) _appliedRes = res;
-                        string resText = resWrite <= 0 ? "" : resOk
+                        bool locked = AppState.DlaaLocked && resWrite < 100;
+                        string resText = resWrite <= 0 ? "" : locked
+                            ? "  ·  Res locked (game on DLAA)"
+                            : resOk
                             ? "  ·  Res " + resWrite + "%" + (AppState.UpscalerName != null ? " " + AppState.UpscalerName : "") + (AppState.IsDlss ? " " + AppState.DlssName(resWrite) : "")
                             : "  ·  Res NOT changed";
+                        if (locked) resOk = false;
                         if (ok)
                         {
                             _appliedGain = gain;

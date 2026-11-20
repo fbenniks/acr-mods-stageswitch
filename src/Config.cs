@@ -175,6 +175,13 @@ namespace AcrFfbGain
         public static bool IsDlss { get { return UpscalerName == "DLSS"; } }
 
         /// <summary>
+        /// Measured in-game: when the game's own menu is on DLSS 100 % (DLAA), DLSS stays in DLAA and
+        /// ignores lower values written by the app. From any other DLSS preset the app can set every
+        /// value, including 100 % (DLAA).
+        /// </summary>
+        public static bool DlaaLocked { get { return IsDlss && GameResScale >= 100; } }
+
+        /// <summary>
         /// Stored stage value -> the value used with the current upscaler. With DLSS this copies what the
         /// game itself does (measured in-game): nearest preset below 100 %, DLAA only at 100 % and above.
         ///   33-34 -> 33.3 | 45-51 -> 50 | 55-60 -> 58 | 63-99 -> 66.7 | 100+ -> 100
