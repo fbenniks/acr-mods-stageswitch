@@ -22,6 +22,8 @@ namespace AcrFfbGain
 
         readonly HashSet<string> _expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // rallies opened this session
         string _lastStageKey;
+        string _lastCar;
+        int _carWait;
         DateTime _menuSince = DateTime.MinValue;
         bool _activePopupShown;
         const int MenuPopupDelaySeconds = 6;
@@ -34,6 +36,7 @@ namespace AcrFfbGain
         int _queuedGain = -1;
         string _queuedLabel;
         RallyStyle _queuedStyle;
+        string _queuedCar;
         bool _queuedPopup;
         int _appliedGain = -1;
         volatile int _applyGen;
@@ -99,6 +102,10 @@ namespace AcrFfbGain
             miMinimized.CheckedChanged += delegate { _cfg.StartMinimized = miMinimized.Checked; QueueSave(); };
             menu.Items.Add(miOverlay);
             menu.Items.Add(miMinimized);
+            var miPerCar = new ToolStripMenuItem("Different gain per car") { CheckOnClick = true, Checked = _cfg.PerCar, ForeColor = Theme.Text, ToolTipText = "Adds a “+ Car” button to every stage so a car can get its own value" };
+            miPerCar.CheckedChanged += delegate { _cfg.PerCar = miPerCar.Checked; QueueSave(); RebuildList(); };
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(miPerCar);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem("Game folder…", null, delegate { ChooseGameFolder(); }) { ForeColor = Theme.Text });
             menu.Items.Add(new ToolStripMenuItem("Open settings folder", null, delegate { System.Diagnostics.Process.Start("explorer.exe", "\"" + AppConfig.Folder + "\""); }) { ForeColor = Theme.Text });
@@ -163,7 +170,7 @@ namespace AcrFfbGain
 
             foreach (var rally in _cfg.Rallies)
             {
-                var card = new RallyCard(rally);
+                var card = new RallyCard(rally, _cfg);
                 card.Expanded = _expanded.Contains(rally.Id);
                 card.Changed += delegate { QueueSave(); };
                 card.ExpandedChanged += delegate
@@ -211,11 +218,12 @@ namespace AcrFfbGain
             var t = new Thread(() =>
             {
                 List<ScannedStage> found = null;
+                List<string> cars = null;
                 string err = null;
                 try
                 {
                     if (dir == null) err = "AC Rally install folder not found. Use “Game folder…”.";
-                    else found = StageScanner.Scan(dir);
+                    else { found = StageScanner.Scan(dir); cars = StageScanner.ScanCars(dir); }
                 }
                 catch (Exception ex) { err = ex.Message; }
                 try
@@ -234,10 +242,11 @@ namespace AcrFfbGain
                         _cfg.GameDir = dir;
                         bool first = !_cfg.Rallies.Any(x => x.Stages.Any(s => !s.Detected));
                         int added = StageScanner.Merge(_cfg, found);
+                        int carsAdded = StageScanner.MergeCars(_cfg, cars);
                         if (first) ApplyFirstRunDefaults();
                         _cfg.Save();
                         RebuildList();
-                        Log.Write("Scan: " + found.Count + " stages, " + added + " new");
+                        Log.Write("Scan: " + found.Count + " stages, " + added + " new; " + cars.Count + " cars, " + carsAdded + " new");
                         if (added > 0 && !first)
                             _tray.ShowBalloonTip(5000, "New stages found", added + " new stage(s) added. Set their FFB gain in the app.", ToolTipIcon.Info);
                         else if (userAsked)
@@ -353,6 +362,8 @@ namespace AcrFfbGain
             if (!inStage)
             {
                 _lastStageKey = null;
+                _lastCar = null;
+                _carWait = 0;
                 ShowActivePopupOnce();
                 return;
             }
@@ -361,11 +372,42 @@ namespace AcrFfbGain
 
             if (_scanning) return; // wait until the stage list is up to date
 
-            if (snap.Track != _lastStageKey)
+            if (snap.Track != _lastStageKey || (snap.Car.Length > 0 && snap.Car != _lastCar))
             {
+                // The car name can arrive a moment after the track: give it ~1.5 s before going without it.
+                if (snap.Car.Length == 0 && _carWait++ < 3) return;
+                _carWait = 0;
                 _lastStageKey = snap.Track;
-                OnStageLoaded(snap.Track, true);
+                _lastCar = snap.Car;
+                OnStageLoaded(snap.Track, snap.Car, true);
             }
+        }
+
+        /// <summary>Finds the car the game reports in the car list (adds it if new) and keeps the game's name for it.</summary>
+        CarInfo LearnCar(string carName)
+        {
+            if (string.IsNullOrEmpty(carName)) return null;
+            var car = _cfg.FindCar(carName);
+            bool changed = false;
+            if (car == null)
+            {
+                car = new CarInfo { Id = carName, Name = carName, NameFromGame = true };
+                _cfg.Cars.Add(car);
+                _cfg.Cars.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+                changed = true;
+            }
+            else if (!car.NameFromGame || car.Name != carName)
+            {
+                car.Name = carName;
+                car.NameFromGame = true;
+                changed = true;
+            }
+            if (changed)
+            {
+                _cfg.Save();
+                if (_cfg.PerCar) RebuildList();
+            }
+            return car;
         }
 
         /// <summary>
@@ -389,7 +431,7 @@ namespace AcrFfbGain
         void ReapplyCurrent()
         {
             if (_lastStageKey == null) return;
-            OnStageLoaded(_lastStageKey, false);
+            OnStageLoaded(_lastStageKey, _lastCar, false);
         }
 
         void SetGame(string text, Color c)
@@ -398,12 +440,14 @@ namespace AcrFfbGain
             _lblGame.ForeColor = c;
         }
 
-        void OnStageLoaded(string track, bool isNewLoad)
+        void OnStageLoaded(string track, string carName, bool isNewLoad)
         {
             RallyConfig rally;
             StageConfig stage = MatchStage(track, out rally);
+            CarInfo car = isNewLoad ? LearnCar(carName) : _cfg.FindCar(carName);
+            AppState.CurrentCarId = car != null ? car.Id : null;
             if (isNewLoad)
-                Log.Write("Stage loaded: '" + track + "' -> " + (stage != null ? rally.Id + "/" + stage.Id : rally != null ? rally.Id : "no match"));
+                Log.Write("Stage loaded: '" + track + "' car '" + carName + "' -> " + (stage != null ? rally.Id + "/" + stage.Id : rally != null ? rally.Id : "no match"));
 
             int gain;
             string label;
@@ -412,10 +456,14 @@ namespace AcrFfbGain
                 label = rally.Name + "  ·  " + stage.Name;
                 if (!stage.Enabled)
                 {
-                    if (isNewLoad) _lblApplied.Text = "Not changed (" + stage.Name + " is unticked)";
+                    if (isNewLoad) _lblApplied.Text = "Not changed (" + stage.Name + " is off)";
                     return;
                 }
                 gain = stage.Gain;
+                int carGain;
+                if (_cfg.PerCar && car != null && stage.CarGains.TryGetValue(car.Id, out carGain))
+                    gain = carGain;
+                if (car != null) label += "  ·  " + car.Name;
             }
             else if (rally != null)
             {
@@ -435,6 +483,7 @@ namespace AcrFfbGain
 
             if (!isNewLoad && gain == _appliedGain) return;
             _queuedStyle = RallyStyle.For(rally.Id, rally.Name);
+            _queuedCar = car != null ? car.Name : null;
             QueueApply(gain, label, isNewLoad);
         }
 
@@ -454,6 +503,7 @@ namespace AcrFfbGain
             int gain = _queuedGain;
             string label = _queuedLabel;
             RallyStyle style = _queuedStyle;
+            string carForPopup = _queuedCar;
             bool popup = _queuedPopup;
             int myGen = ++_applyGen;
             _queuedGain = -1;
@@ -486,7 +536,7 @@ namespace AcrFfbGain
                             Log.Write("Applied FFB gain " + gain + " for " + label);
                             _lblApplied.Text = "Last change: " + gain + "  (" + label + ")";
                             if (_cfg.ShowOverlay && popup)
-                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain, label, true, _cfg.OverlaySeconds, style);
+                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain, label, true, _cfg.OverlaySeconds, style, carForPopup);
                         }
                         else
                         {

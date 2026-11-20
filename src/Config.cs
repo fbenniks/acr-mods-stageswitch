@@ -12,6 +12,14 @@ namespace AcrFfbGain
         public bool Enabled = true;
         public int Gain = 100;
         public bool Detected;      // true when added from telemetry rather than from the game files
+        public Dictionary<string, int> CarGains = new Dictionary<string, int>(); // optional per-car values (car Id -> gain)
+    }
+
+    public class CarInfo
+    {
+        public string Id;          // e.g. "SubaruImprezaS3" (livery folder name) or the telemetry name
+        public string Name;        // e.g. "Subaru Impreza S3"
+        public bool NameFromGame;  // Name was reported by the game itself
     }
 
     public class RallyConfig
@@ -29,7 +37,9 @@ namespace AcrFfbGain
         public int OverlaySeconds = 10;
         public bool StartMinimized;
         public int DefaultGain = 100;
+        public bool PerCar;        // "Different gain per car" option
         public List<RallyConfig> Rallies = new List<RallyConfig>();
+        public List<CarInfo> Cars = new List<CarInfo>();
 
         public static string Folder
         {
@@ -51,7 +61,12 @@ namespace AcrFfbGain
                     if (cfg != null)
                     {
                         if (cfg.Rallies == null) cfg.Rallies = new List<RallyConfig>();
-                        foreach (var r in cfg.Rallies) if (r.Stages == null) r.Stages = new List<StageConfig>();
+                        if (cfg.Cars == null) cfg.Cars = new List<CarInfo>();
+                        foreach (var r in cfg.Rallies)
+                        {
+                            if (r.Stages == null) r.Stages = new List<StageConfig>();
+                            foreach (var s in r.Stages) if (s.CarGains == null) s.CarGains = new Dictionary<string, int>();
+                        }
                         if (cfg.OverlaySeconds <= 0) cfg.OverlaySeconds = 10;
                         return cfg;
                     }
@@ -80,12 +95,27 @@ namespace AcrFfbGain
             }
         }
 
+        public CarInfo FindCar(string idOrName)
+        {
+            string n = StageScanner.Norm(idOrName);
+            if (n.Length == 0) return null;
+            foreach (var c in Cars)
+                if (StageScanner.Norm(c.Id) == n || StageScanner.Norm(c.Name) == n) return c;
+            return null;
+        }
+
         public RallyConfig FindRally(string id)
         {
             foreach (var r in Rallies)
                 if (string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase)) return r;
             return null;
         }
+    }
+
+    /// <summary>Runtime state shared with the UI.</summary>
+    public static class AppState
+    {
+        public static string CurrentCarId; // car on the current stage, if any
     }
 
     public static class Log

@@ -59,22 +59,27 @@ namespace AcrFfbGain
         }
 
         RallyStyle _flag;
+        string _car;
         const int FlagW = 33, FlagH = 22;
 
-        public void ShowMessage(string value, string title, string subtitle, bool ok, int seconds, RallyStyle flag = null)
+        /// <summary>Width taken by the flag and car mark in front of the title.</summary>
+        int IconsW { get { return (_flag != null ? FlagW + 8 : 0) + (_car != null ? FlagW + 8 : 0) + (_flag != null || _car != null ? 2 : 0); } }
+
+        public void ShowMessage(string value, string title, string subtitle, bool ok, int seconds, RallyStyle flag = null, string car = null)
         {
             _value = value;
             _title = title;
             _subtitle = subtitle;
             _ok = ok;
             _flag = flag;
+            _car = string.IsNullOrEmpty(car) ? null : car;
 
             using (var g = CreateGraphics())
             using (var fValue = new Font("Segoe UI", 30f, FontStyle.Bold))
             using (var fTitle = new Font("Segoe UI Semibold", 13f))
             using (var fSub = new Font("Segoe UI", 10.5f))
             {
-                int textW = (int)Math.Max(g.MeasureString(_title, fTitle).Width + (_flag != null ? FlagW + 10 : 0), g.MeasureString(_subtitle, fSub).Width);
+                int textW = (int)Math.Max(g.MeasureString(_title, fTitle).Width + IconsW, g.MeasureString(_subtitle, fSub).Width);
                 int valueW = (int)g.MeasureString(_value, fValue).Width;
                 Width = Math.Max(360, Math.Min(900, 28 + valueW + 24 + textW + 30));
             }
@@ -114,12 +119,18 @@ namespace AcrFfbGain
                 var vs = g.MeasureString(_value, fValue);
                 g.DrawString(_value, fValue, bValue, 24, (Height - vs.Height) / 2);
                 float x = 24 + vs.Width + 14;
-                float tx = x;
+                float tx = x + 1;
                 if (_flag != null)
                 {
-                    _flag.DrawFlag(g, new RectangleF(x + 1, 28, FlagW, FlagH));
-                    tx = x + FlagW + 10;
+                    _flag.DrawFlag(g, new RectangleF(tx, 28, FlagW, FlagH));
+                    tx += FlagW + 8;
                 }
+                if (_car != null)
+                {
+                    BrandMark.Draw(g, new RectangleF(tx, 28, FlagW, FlagH), _car);
+                    tx += FlagW + 8;
+                }
+                if (_flag != null || _car != null) tx += 1;
                 g.DrawString(_title, fTitle, bTitle, tx, 26);
                 g.DrawString(_subtitle, fSub, bSub, x, 56);
             }

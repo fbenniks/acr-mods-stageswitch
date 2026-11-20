@@ -7,6 +7,8 @@ Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage, and sho
 1. Run `AcrFfbGain.exe` (it lives in the system tray; closing the window keeps it running — right-click the tray icon → Exit to quit).
 2. Set a value (0–200) per stage. The bold rally row sets all stages of that rally at once.
    Untick a stage to leave the game's gain alone there.
+   Optional: ⚙ → **Different gain per car** adds a “+ Car” button to each stage, so a car can get its
+   own value there. Cars without their own value use the stage value. Off by default.
 3. Start AC Rally and load a stage: the gain is set and a popup shows the new value.
    Changing the value of the stage you're on in the app applies it immediately.
 
@@ -18,6 +20,9 @@ Sets Assetto Corsa Rally's in-game **FFB gain** automatically per stage, and sho
   loaded and names the rally plus an area (e.g. `Wales Cwmbiga`, which is really Hafren North). The exact stage
   is then read from the save file, where the game writes the event you start (e.g. `WelesS3HafrenNorthFullForward`).
   If that fails, the rally's value is used.
+- **Cars** – the car list comes from `acr\Content\LiveryTemplates` (one folder per car); the car you drive is
+  reported by shared memory, and its name from the game replaces the folder name. Flags and car-make logos
+  are simplified versions drawn in code (the game's own artwork is packed and not readable).
 - **Changing the gain** – the game keeps its settings in memory in the same layout it writes to
   `%LOCALAPPDATA%\acr\Saved\SaveGames\PlayerDataSaveSlot.sav`. The app uses the bytes around the gain in that
   file as a fingerprint, finds the copies in the game's memory and writes the new value (150 = 1.5).

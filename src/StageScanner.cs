@@ -153,6 +153,62 @@ namespace AcrFfbGain
             return stages.Values.OrderBy(s => s.RallyId).ThenBy(s => s.StageId).ToList();
         }
 
+        /// <summary>Car list = the livery template folders shipped with the game (one per car).</summary>
+        public static List<string> ScanCars(string gameDir)
+        {
+            var list = new List<string>();
+            string dir = Path.Combine(gameDir, @"acr\Content\LiveryTemplates");
+            if (!Directory.Exists(dir)) return list;
+            foreach (var d in Directory.GetDirectories(dir))
+            {
+                string name = Path.GetFileName(d);
+                if (Regex.IsMatch(name, "^[A-Z][A-Za-z0-9]+$")) list.Add(name); // skips "step-by-step"
+            }
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return list;
+        }
+
+        /// <summary>Adds newly found cars. Returns how many were added.</summary>
+        public static int MergeCars(AppConfig cfg, List<string> carIds)
+        {
+            int added = 0;
+            foreach (var id in carIds)
+            {
+                if (cfg.FindCar(id) != null) continue;
+                cfg.Cars.Add(new CarInfo { Id = id, Name = PrettyCar(id) });
+                added++;
+            }
+            cfg.Cars.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+            return added;
+        }
+
+        /// <summary>"HyundaiI20NRally2" -> "Hyundai I20 N Rally2", "Fiat124Abarth" -> "Fiat 124 Abarth"</summary>
+        public static string PrettyCar(string id)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < id.Length; i++)
+            {
+                char c = id[i];
+                if (i > 0)
+                {
+                    char p = id[i - 1];
+                    bool nextLower = i + 1 < id.Length && char.IsLower(id[i + 1]);
+                    if (char.IsUpper(c) && (char.IsLower(p) || char.IsDigit(p) || (char.IsUpper(p) && nextLower))) sb.Append(' ');
+                    else if (char.IsDigit(c) && char.IsLower(p) && !IsShortSuffix(id, i)) sb.Append(' ');
+                }
+                sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        // keep "Rally2", "Evo2", "Rally4" together; split "Peugeot206", "Fiat124"
+        static bool IsShortSuffix(string id, int digitPos)
+        {
+            int end = digitPos;
+            while (end < id.Length && char.IsDigit(id[end])) end++;
+            return end - digitPos == 1;
+        }
+
         /// <summary>"Monte Carlo La Bollène" -> "montecarlolabollene"</summary>
         public static string Norm(string s)
         {

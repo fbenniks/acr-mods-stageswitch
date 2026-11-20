@@ -309,11 +309,18 @@ namespace AcrFfbGain
         public readonly GainStepper Stepper;
         public event EventHandler Changed;
         readonly ToolTip _tip = new ToolTip();
+        readonly AppConfig _cfg;
+        readonly LinkLabel _addCar;
+        readonly List<Control> _carControls = new List<Control>();
+        readonly List<GainStepper> _carSteppers = new List<GainStepper>();
+        readonly List<string> _carLineIds = new List<string>();
+        const int LineH = 48, CarH = 40, LogoW = 30, LogoH = 20;
 
-        public StageRow(StageConfig stage)
+        public StageRow(StageConfig stage, AppConfig cfg)
         {
             Stage = stage;
-            Height = 48;
+            _cfg = cfg;
+            Height = LineH;
             BackColor = Theme.Panel;
             Margin = Padding.Empty;
 
@@ -332,16 +339,34 @@ namespace AcrFfbGain
                 AutoEllipsis = true,
                 BackColor = Color.Transparent,
             };
-            Stepper = new GainStepper { Top = (Height - 34) / 2 };
+            Stepper = new GainStepper { Top = (LineH - 34) / 2 };
             Stepper.SetSilently(stage.Gain);
+
+            // "+ Car" (only with the "Different gain per car" option)
+            _addCar = new LinkLabel
+            {
+                Text = "+ Car",
+                AutoSize = true,
+                Top = (LineH - 17) / 2,
+                Font = new Font("Segoe UI Semibold", 9f),
+                LinkColor = Theme.Muted,
+                ActiveLinkColor = Theme.Accent,
+                LinkBehavior = LinkBehavior.HoverUnderline,
+                BackColor = Color.Transparent,
+                Visible = false,
+            };
+            _tip.SetToolTip(_addCar, "Give a car its own FFB gain on this stage");
+            _addCar.LinkClicked += delegate { ShowAddCarMenu(); };
 
             Controls.Add(Toggle);
             Controls.Add(Title);
+            Controls.Add(_addCar);
             Controls.Add(Stepper);
 
             Toggle.CheckedChanged += delegate { Stage.Enabled = Toggle.Checked; UpdateLook(); Raise(); };
             Stepper.ValueChanged += delegate { Stage.Gain = Stepper.Value; Raise(); };
             Title.Click += delegate { Toggle.Checked = !Toggle.Checked; };
+            BuildCarLines();
             UpdateLook();
         }
 
@@ -351,14 +376,139 @@ namespace AcrFfbGain
         {
             Title.ForeColor = Stage.Enabled ? Theme.Text : Theme.Faint;
             Stepper.Enabled = Stage.Enabled;
+            foreach (var s in _carSteppers) s.Enabled = Stage.Enabled;
+        }
+
+        string CarName(string id)
+        {
+            var c = _cfg.Cars.FirstOrDefault(x => x.Id == id);
+            return c != null ? c.Name : id;
+        }
+
+        /// <summary>One line per car that has its own value: "Subaru Impreza S3   ✕  − 160 +"</summary>
+        void BuildCarLines()
+        {
+            SuspendLayout();
+            foreach (var c in _carControls) { Controls.Remove(c); c.Dispose(); }
+            _carControls.Clear();
+            _carSteppers.Clear();
+            _carLineIds.Clear();
+
+            bool on = _cfg.PerCar;
+            _addCar.Visible = on;
+            int y = LineH;
+            if (on)
+            {
+                foreach (var kv in Stage.CarGains.OrderBy(k => CarName(k.Key), StringComparer.OrdinalIgnoreCase).ToList())
+                {
+                    string carId = kv.Key;
+                    _carLineIds.Add(carId);
+                    var name = new Label
+                    {
+                        Text = CarName(carId),
+                        AutoSize = false,
+                        Left = Title.Left + 18 + LogoW + 10,
+                        Top = y,
+                        Height = CarH,
+                        TextAlign = ContentAlignment.MiddleLeft,
+                        Font = new Font("Segoe UI", 9.5f),
+                        ForeColor = Theme.Muted,
+                        AutoEllipsis = true,
+                        BackColor = Color.Transparent,
+                    };
+                    var remove = new Label
+                    {
+                        Text = "✕",
+                        AutoSize = false,
+                        Size = new Size(24, 24),
+                        Top = y + (CarH - 24) / 2,
+                        TextAlign = ContentAlignment.MiddleCenter,
+                        Font = new Font("Segoe UI Symbol", 9f),
+                        ForeColor = Theme.Faint,
+                        BackColor = Color.Transparent,
+                        Cursor = Cursors.Hand,
+                        Tag = "remove",
+                    };
+                    _tip.SetToolTip(remove, "Remove — this car uses the stage value again");
+                    remove.MouseEnter += delegate { remove.ForeColor = Theme.Bad; };
+                    remove.MouseLeave += delegate { remove.ForeColor = Theme.Faint; };
+                    remove.Click += delegate
+                    {
+                        Stage.CarGains.Remove(carId);
+                        BuildCarLines();
+                        Raise();
+                    };
+                    var stepper = new GainStepper { Size = new Size(120, 30), Top = y + (CarH - 30) / 2 };
+                    stepper.SetSilently(kv.Value);
+                    stepper.ValueChanged += delegate { Stage.CarGains[carId] = stepper.Value; Raise(); };
+
+                    _carControls.Add(name);
+                    _carControls.Add(remove);
+                    _carControls.Add(stepper);
+                    _carSteppers.Add(stepper);
+                    Controls.Add(name);
+                    Controls.Add(remove);
+                    Controls.Add(stepper);
+                    y += CarH;
+                }
+                if (Stage.CarGains.Count > 0) y += 6;
+            }
+            Height = y;
+            LayoutRow();
+            ResumeLayout();
+            UpdateLook();
+            Invalidate();
+        }
+
+        void ShowAddCarMenu()
+        {
+            var menu = new ContextMenuStrip { Renderer = new ToolStripProfessionalRenderer(new DarkMenuColors()), ShowImageMargin = true, ImageScalingSize = new Size(LogoW, LogoH), BackColor = Theme.Panel, ForeColor = Theme.Text, Font = new Font("Segoe UI", 9.5f) };
+            var available = _cfg.Cars.Where(c => !Stage.CarGains.ContainsKey(c.Id)).ToList();
+            var current = available.FirstOrDefault(c => c.Id == AppState.CurrentCarId);
+            if (current != null)
+            {
+                available.Remove(current);
+                available.Insert(0, current);
+            }
+            if (available.Count == 0)
+                menu.Items.Add(new ToolStripMenuItem("All cars already added") { Enabled = false });
+            foreach (var car in available)
+            {
+                var c = car;
+                var item = new ToolStripMenuItem(c == current ? c.Name + "   (current car)" : c.Name) { ForeColor = c == current ? Theme.Accent : Theme.Text, Image = BrandMark.Bitmap(c.Name, LogoW, LogoH), ImageScaling = ToolStripItemImageScaling.None };
+                item.Click += delegate
+                {
+                    Stage.CarGains[c.Id] = Stage.Gain;
+                    BuildCarLines();
+                    Raise();
+                };
+                menu.Items.Add(item);
+                if (c == current && available.Count > 1) menu.Items.Add(new ToolStripSeparator());
+            }
+            menu.Closed += delegate { BeginInvoke((Action)menu.Dispose); };
+            menu.Show(_addCar, new Point(0, _addCar.Height + 2));
+        }
+
+        void LayoutRow()
+        {
+            if (Stepper == null) return; // called from the base constructor
+            Stepper.Left = Width - Stepper.Width - 16;
+            _addCar.Left = Stepper.Left - _addCar.Width - 14;
+            int titleRight = _addCar.Visible ? _addCar.Left - 8 : Stepper.Left - 10;
+            Title.Width = Math.Max(40, titleRight - Title.Left);
+            foreach (var c in _carControls)
+            {
+                var gs = c as GainStepper;
+                if (gs != null) gs.Left = Stepper.Right - gs.Width;
+                else if ((c.Tag as string) == "remove") c.Left = Stepper.Left - 6 - 24 - 4 + (Stepper.Width - 120);
+                else c.Width = Math.Max(40, Stepper.Left - 40 - c.Left);
+            }
         }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            if (Stepper == null) return; // called from the base constructor
-            Stepper.Left = Width - Stepper.Width - 16;
-            Title.Width = Math.Max(40, Stepper.Left - Title.Left - 10);
+            LayoutRow();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -366,6 +516,13 @@ namespace AcrFfbGain
             base.OnPaint(e);
             using (var p = new Pen(Theme.Border)) e.Graphics.DrawLine(p, Toggle.Left, 0, Width - 16, 0);
             using (var b = new SolidBrush(Strip)) e.Graphics.FillRectangle(b, 0, 0, 4, Height);
+
+            // car make marks in front of each car line
+            for (int i = 0; i < _carLineIds.Count; i++)
+            {
+                float y = LineH + i * CarH + (CarH - LogoH) / 2f;
+                BrandMark.Draw(e.Graphics, new RectangleF(Title.Left + 18, y, LogoW, LogoH), CarName(_carLineIds[i]));
+            }
         }
 
         /// <summary>Colour of the location strip on the left edge.</summary>
@@ -391,9 +548,12 @@ namespace AcrFfbGain
         const int TextLeft = 88;
         static readonly RectangleF FlagRect = new RectangleF(42, (HeaderH - 24) / 2f, 36, 24);
 
-        public RallyCard(RallyConfig rally)
+        readonly AppConfig _cfg;
+
+        public RallyCard(RallyConfig rally, AppConfig cfg)
         {
             Rally = rally;
+            _cfg = cfg;
             _style = RallyStyle.For(rally.Id, rally.Name);
             _strip = RallyStyle.SurfaceColor(_style.Surface);
             BackColor = Theme.Panel;
@@ -431,8 +591,9 @@ namespace AcrFfbGain
 
             foreach (var s in rally.Stages)
             {
-                var row = new StageRow(s) { Visible = false, Left = 0, Strip = _strip };
+                var row = new StageRow(s, cfg) { Visible = false, Left = 0, Strip = _strip };
                 row.Changed += delegate { RefreshSummary(); Raise(); };
+                row.SizeChanged += delegate { if (_expanded) LayoutCard(); };
                 _rows.Add(row);
                 Controls.Add(row);
             }
@@ -504,7 +665,9 @@ namespace AcrFfbGain
             if (on == 0) detail = "all off";
             else if (gains.Count == 1) detail = on == stages.Count ? "all " + gains[0] : on + " on, " + gains[0];
             else detail = "custom per stage (" + gains.Min() + "–" + gains.Max() + ")";
-            _summary.Text = count + "  ·  " + detail;
+            int carOverrides = _cfg.PerCar ? stages.Sum(s => s.CarGains.Count) : 0;
+            string cars = carOverrides == 0 ? "" : "  ·  " + carOverrides + (carOverrides == 1 ? " car setting" : " car settings");
+            _summary.Text = count + "  ·  " + detail + cars;
 
             bool mixed = gains.Count > 1;
             if (gains.Count == 1 && gains[0] != Rally.Gain) { Rally.Gain = gains[0]; _stepper.SetSilently(gains[0]); }
