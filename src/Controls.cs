@@ -317,14 +317,14 @@ namespace AcrFfbGain
             BackColor = Theme.Panel;
             Margin = Padding.Empty;
 
-            Toggle = new ToggleSwitch { Left = 52, Top = (Height - 20) / 2 };
+            Toggle = new ToggleSwitch { Left = 88, Top = (Height - 20) / 2 };
             Toggle.Checked = stage.Enabled;
             _tip.SetToolTip(Toggle, "Off = leave the game's FFB gain unchanged on this stage");
             Title = new Label
             {
                 Text = stage.Name,
                 AutoSize = false,
-                Left = 100,
+                Left = 134,
                 Top = 0,
                 Height = Height,
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -364,8 +364,12 @@ namespace AcrFfbGain
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            using (var p = new Pen(Theme.Border)) e.Graphics.DrawLine(p, 52, 0, Width - 16, 0);
+            using (var p = new Pen(Theme.Border)) e.Graphics.DrawLine(p, Toggle.Left, 0, Width - 16, 0);
+            using (var b = new SolidBrush(Strip)) e.Graphics.FillRectangle(b, 0, 0, 4, Height);
         }
+
+        /// <summary>Colour of the location strip on the left edge.</summary>
+        public Color Strip = Theme.Border;
     }
 
     /// <summary>Rally card: header with chevron, name, summary and an "all stages" stepper; stages fold out.</summary>
@@ -377,15 +381,21 @@ namespace AcrFfbGain
         readonly Label _summary;
         readonly GainStepper _stepper;
         readonly List<StageRow> _rows = new List<StageRow>();
+        readonly RallyStyle _style;
+        readonly Color _strip;
         bool _expanded;
         bool _hoverHeader;
         public event EventHandler Changed;
         public event EventHandler ExpandedChanged;
         const int HeaderH = 64;
+        const int TextLeft = 88;
+        static readonly RectangleF FlagRect = new RectangleF(42, (HeaderH - 24) / 2f, 36, 24);
 
         public RallyCard(RallyConfig rally)
         {
             Rally = rally;
+            _style = RallyStyle.For(rally.Id, rally.Name);
+            _strip = RallyStyle.SurfaceColor(_style.Surface);
             BackColor = Theme.Panel;
             Margin = new Padding(0, 0, 0, 10);
             DoubleBuffered = true;
@@ -395,8 +405,8 @@ namespace AcrFfbGain
             {
                 Text = rally.Name,
                 AutoSize = true,
-                Left = 46,
-                Top = 12,
+                Left = TextLeft - 2,
+                Top = 11,
                 Font = new Font("Segoe UI Semibold", 12.5f),
                 ForeColor = Theme.Text,
                 BackColor = Color.Transparent,
@@ -405,7 +415,7 @@ namespace AcrFfbGain
             _summary = new Label
             {
                 AutoSize = true,
-                Left = 47,
+                Left = TextLeft - 1,
                 Top = 37,
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Theme.Muted,
@@ -421,7 +431,7 @@ namespace AcrFfbGain
 
             foreach (var s in rally.Stages)
             {
-                var row = new StageRow(s) { Visible = false, Left = 0 };
+                var row = new StageRow(s) { Visible = false, Left = 0, Strip = _strip };
                 row.Changed += delegate { RefreshSummary(); Raise(); };
                 _rows.Add(row);
                 Controls.Add(row);
@@ -522,6 +532,33 @@ namespace AcrFfbGain
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+            // location strip (surface colour), flag
+            using (var b = new SolidBrush(_strip)) g.FillRectangle(b, 0, 0, 4, HeaderH);
+            _style.DrawFlag(g, FlagRect);
+
+            // surface badge next to the name: [icon Gravel]
+            string surface = RallyStyle.SurfaceName(_style.Surface);
+            if (surface != null)
+            {
+                using (var f = new Font("Segoe UI Semibold", 8.25f))
+                {
+                    var c = RallyStyle.SurfaceColor(_style.Surface);
+                    var ts = g.MeasureString(surface, f);
+                    float h = 20, x = _name.Right + 10, y = _name.Top + (_name.Height - h) / 2f + 1;
+                    var pill = new RectangleF(x, y, 8 + 14 + 4 + ts.Width + 6, h);
+                    using (var path = Theme.Round(pill, h / 2f))
+                    using (var b = new SolidBrush(Color.FromArgb(38, c)))
+                    using (var p = new Pen(Color.FromArgb(110, c)))
+                    {
+                        g.FillPath(b, path);
+                        g.DrawPath(p, path);
+                    }
+                    RallyStyle.DrawSurfaceIcon(g, new RectangleF(x + 7, y + 3, 14, 14), _style.Surface, c);
+                    using (var b = new SolidBrush(c)) g.DrawString(surface, f, b, x + 8 + 14 + 2, y + (h - ts.Height) / 2f);
+                }
+            }
 
             // chevron: › when closed, ⌄ when open
             float cx = 24, cy = HeaderH / 2f;
@@ -535,6 +572,7 @@ namespace AcrFfbGain
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            using (var b = new SolidBrush(_strip)) e.Graphics.FillRectangle(b, 1, 1, 4, Height - 2);
             using (var p = new Pen(Theme.Border)) e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
         }
     }

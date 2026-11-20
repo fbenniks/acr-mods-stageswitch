@@ -33,6 +33,7 @@ namespace AcrFfbGain
         bool _applying;
         int _queuedGain = -1;
         string _queuedLabel;
+        RallyStyle _queuedStyle;
         bool _queuedPopup;
         int _appliedGain = -1;
         volatile int _applyGen;
@@ -433,6 +434,7 @@ namespace AcrFfbGain
             }
 
             if (!isNewLoad && gain == _appliedGain) return;
+            _queuedStyle = RallyStyle.For(rally.Id, rally.Name);
             QueueApply(gain, label, isNewLoad);
         }
 
@@ -451,6 +453,7 @@ namespace AcrFfbGain
             int pid = _lastPid;
             int gain = _queuedGain;
             string label = _queuedLabel;
+            RallyStyle style = _queuedStyle;
             bool popup = _queuedPopup;
             int myGen = ++_applyGen;
             _queuedGain = -1;
@@ -483,7 +486,7 @@ namespace AcrFfbGain
                             Log.Write("Applied FFB gain " + gain + " for " + label);
                             _lblApplied.Text = "Last change: " + gain + "  (" + label + ")";
                             if (_cfg.ShowOverlay && popup)
-                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain, label, true, _cfg.OverlaySeconds);
+                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain, label, true, _cfg.OverlaySeconds, style);
                         }
                         else
                         {
