@@ -1,10 +1,9 @@
 # AC Rally StageSwitch
 
-**Set your force feedback once for each stage, then let StageSwitch load it every time you drive.**
+**Automatically apply the force feedback (FFB) gain and render resolution scale you choose for each stage in Assetto Corsa Rally.**
 
-AC Rally StageSwitch remembers the **FFB gain** you want on each stage in Assetto Corsa Rally. Keep one value for a
-whole rally, fine-tune individual stages, or give a car its own gain on a particular stage. If you want to tune
-graphics too, StageSwitch can load a different **render resolution scale** for every stage.
+Set a baseline for the whole rally, then fine-tune individual stages. You can also give a car its own FFB gain on a
+particular stage. Render resolution scaling is optional.
 
 > **A hobby project.** StageSwitch is an unofficial tool for Assetto Corsa Rally fans. See [Disclaimer](#disclaimer).
 
