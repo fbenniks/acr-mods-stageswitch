@@ -5,7 +5,9 @@
 Set a baseline for the whole rally, then fine-tune individual stages. You can also give a car its own FFB gain on a
 particular stage. Render resolution scaling is optional.
 
-> **A hobby project.** StageSwitch is an unofficial tool for Assetto Corsa Rally fans. See [Disclaimer](#disclaimer).
+> **A hobby project.** I built StageSwitch in my spare time because I wanted my FFB gain and render resolution
+> to switch automatically when I loaded a different stage. I make it independently and share it for free.
+> See [Disclaimer](#disclaimer).
 
 ![StageSwitch showing the DLSS resolution and FFB gain columns, with Monte-Carlo stages at 58% and 67%](docs/images/overview-dlss.png)
 
@@ -125,6 +127,12 @@ For stage detection, settings storage, the MozaHud connection and build instruct
 
 ## Disclaimer
 
-AC Rally StageSwitch is an unofficial hobby project for sim-rally fans. It is independent of the makers and
-publishers of Assetto Corsa Rally and MOZA Racing. It is provided as is, without warranty. Product names and
-logos belong to their respective owners. The screenshots show example settings from the app.
+AC Rally StageSwitch is a personal hobby project, made in my spare time for other sim-rally fans.
+
+- I develop and share StageSwitch independently, without affiliation, sponsorship, endorsement or payment from
+  the makers or publishers of Assetto Corsa Rally, MOZA Racing or anyone else.
+- It is an **unofficial** tool. It reads information from the game and applies your chosen FFB gain and optional
+  render resolution scale while the game is running.
+- It's provided **as is, without any warranty**. You use it at your own risk.
+- Product names, logos and brands belong to their respective owners. They identify the products and features
+  shown in the app and in this guide. The screenshots show example settings.
