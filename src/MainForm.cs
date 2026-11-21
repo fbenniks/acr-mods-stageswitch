@@ -90,6 +90,10 @@ namespace AcrFfbGain
             _poll.Tick += delegate { Poll(); };
             _poll.Start();
 
+            // requests from companion apps (MozaHud's "Apply in StageSwitch")
+            HandleCreated += delegate { if (_companion == null) _companion = new CompanionServer(OnCompanionRequest); };
+            if (IsHandleCreated && _companion == null) _companion = new CompanionServer(OnCompanionRequest);
+
             if (_cfg.StartMinimized)
             {
                 WindowState = FormWindowState.Minimized;
@@ -733,6 +737,108 @@ namespace AcrFfbGain
         {
             if (_lastStageKey == null) return;
             OnStageLoaded(_lastStageKey, _lastCar, false);
+        }
+
+        // ---------------------------------------------------------------- companion apps (MozaHud)
+
+        CompanionServer _companion;
+
+        /// <summary>Pipe thread -> UI thread.</summary>
+        string OnCompanionRequest(string[] f)
+        {
+            if (IsDisposed) return "ERR closing";
+            return (string)Invoke((Func<string>)(() => HandleCompanionRequest(f)));
+        }
+
+        string HandleCompanionRequest(string[] f)
+        {
+            string cmd = f.Length > 0 ? f[0].Trim().ToUpperInvariant() : "";
+            if (cmd == "HELLO") return "OK\t" + AppInfo.Name;
+            if (cmd == "GET" && f.Length >= 4)
+            {
+                RallyConfig rally; StageConfig stage; string err;
+                if (!FindForCompanion(f[1], f[2], out rally, out stage, out err)) return "ERR " + err;
+                var car = _cfg.FindCar(f[3]);
+                int carGain = 0;
+                bool hasCar = car != null && stage.CarGains.TryGetValue(car.Id, out carGain);
+                return string.Join("\t", new[] { "OK", rally.Name, stage.Name, rally.Gain.ToString(), stage.Gain.ToString(),
+                    hasCar ? carGain.ToString() : "-", car != null ? car.Name : "", _cfg.PerCar ? "1" : "0" });
+            }
+            if (cmd == "SETGAIN" && f.Length >= 6)
+            {
+                string scope = f[1].Trim().ToLowerInvariant();
+                int gain;
+                if (!int.TryParse(f[5].Trim(), out gain) || gain < 0 || gain > 200) return "ERR gain must be 0-200";
+                RallyConfig rally; StageConfig stage; string err;
+                if (!FindForCompanion(f[2], f[3], out rally, out stage, out err)) return "ERR " + err;
+                var car = _cfg.FindCar(f[4]);
+                string where, note = "";
+                switch (scope)
+                {
+                    case "car":
+                        if (car == null) return "ERR car '" + f[4] + "' is not known to StageSwitch";
+                        stage.CarGains[car.Id] = gain;
+                        if (!_cfg.PerCar) { _cfg.PerCar = true; note = " \"Different gain per car\" was switched on."; }
+                        where = rally.Name + "  ·  " + stage.Name + "  ·  " + car.Name;
+                        break;
+                    case "rallycar":
+                        if (car == null) return "ERR car '" + f[4] + "' is not known to StageSwitch";
+                        foreach (var s in rally.Stages) s.CarGains[car.Id] = gain;
+                        if (!_cfg.PerCar) { _cfg.PerCar = true; note = " \"Different gain per car\" was switched on."; }
+                        where = rally.Name + " (all " + rally.Stages.Count + " stages)  ·  " + car.Name;
+                        break;
+                    case "stage":
+                        stage.Gain = gain;
+                        where = rally.Name + "  ·  " + stage.Name;
+                        break;
+                    case "rally":
+                        rally.Gain = gain;
+                        foreach (var s in rally.Stages) s.Gain = gain;
+                        where = rally.Name + " (all " + rally.Stages.Count + " stages)";
+                        break;
+                    default:
+                        return "ERR unknown scope '" + scope + "'";
+                }
+                // The driven car's own values would still win over a stage or rally value: drop them
+                // (on this stage for "stage", on all the rally's stages for "rally").
+                if ((scope == "stage" || scope == "rally") && car != null)
+                {
+                    int removed = 0;
+                    foreach (var s in scope == "rally" ? rally.Stages : new List<StageConfig> { stage })
+                        if (s.CarGains.Remove(car.Id)) removed++;
+                    if (removed > 0)
+                        note += " " + car.Name + "'s own value" + (removed > 1 ? "s on " + removed + " stages were" : " on " + stage.Name + " was") +
+                                " removed so this one applies.";
+                }
+                if (scope == "rally" || scope == "rallycar") foreach (var s in rally.Stages) s.Enabled = true;
+                stage.Enabled = true;
+                _cfg.Save();
+                RebuildList();
+                Log.Write("MozaHud: FFB gain " + gain + " for " + where + "." + note);
+                _lblApplied.Text = "From MozaHud: FFB " + gain + "  (" + where + ")";
+                if (_lastStageKey != null) { _appliedGain = -1; ReapplyCurrent(); }   // on that stage now: apply live
+                return "OK\tSaved FFB gain " + gain + " for " + where + "." + note;
+            }
+            return "ERR unknown request";
+        }
+
+        /// <summary>Rally by id or name, stage by id or name (or a save-file style id that starts with the stage id).</summary>
+        bool FindForCompanion(string rallyKey, string stageKey, out RallyConfig rally, out StageConfig stage, out string err)
+        {
+            rally = null; stage = null; err = null;
+            string rn = StageScanner.Norm(StageScanner.NormalizeRally(rallyKey ?? "")), sn = StageScanner.Norm(stageKey);
+            foreach (var r in _cfg.Rallies)
+                if (StageScanner.Norm(r.Id) == rn || StageScanner.Norm(r.Name) == rn) { rally = r; break; }
+            if (rally == null) { err = "rally '" + rallyKey + "' is not known to StageSwitch"; return false; }
+            int bestLen = 0;
+            foreach (var s in rally.Stages)
+            {
+                string id = StageScanner.Norm(s.Id), name = StageScanner.Norm(s.Name);
+                if (id == sn || name == sn) { stage = s; break; }
+                if (id.Length > bestLen && sn.StartsWith(id)) { stage = s; bestLen = id.Length; }
+            }
+            if (stage == null) { err = "stage '" + stageKey + "' is not known in " + rally.Name; return false; }
+            return true;
         }
 
         void SetGame(string text, Color c)

@@ -46,6 +46,14 @@ and shows a popup over the game for 10 seconds when it changes them.
   The upscaler shown in the column title (TSR / DLSS / XeSS / FSR = 2 / 3 / 4 / 5) is read from the save file.
   With DLSS the game itself rounds menu values to DLSS presets (e.g. 63 % → 66.7 %); the app writes the exact value.
 
+- **Companion apps** – MozaHud (wheelbase torque/clipping per stage) can set a recommended gain here: StageSwitch
+  listens on the local named pipe `ACRallyStageSwitch` (one tab-separated request line, one reply line):
+  `HELLO`, `GET rally stage car` (current rally / stage / car values) and
+  `SETGAIN scope rally stage car gain` with scope `car` (this car on this stage), `rallycar` (this car on all the
+  rally's stages), `stage` (all cars on this stage) or `rally` (all cars on all the rally's stages). Car scopes switch
+  on "Different gain per car"; stage/rally scopes remove the driven car's own values so the new value applies.
+  Changes are saved, shown in the list and applied at once when you're on that stage.
+
 Settings and log: `%APPDATA%\AC Rally StageSwitch\` (`settings.json`, `log.txt`).
 Settings from before the rename (`%APPDATA%\AcrFfbGain\`) are copied over on first start; the old folder is left as a backup.
 
