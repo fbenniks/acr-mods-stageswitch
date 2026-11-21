@@ -8,7 +8,7 @@ graphics too, StageSwitch can load a different **render resolution scale** for e
 
 > **A hobby project.** StageSwitch is an unofficial tool for Assetto Corsa Rally fans. See [Disclaimer](#disclaimer).
 
-![StageSwitch with Monte-Carlo expanded and different FFB gains for La Bollène-Vésubie and Sisteron](docs/images/overview.png)
+![StageSwitch showing the DLSS resolution and FFB gain columns, with Monte-Carlo stages at 58% and 67%](docs/images/overview-dlss.png)
 
 ---
 
