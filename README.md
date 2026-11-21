@@ -45,6 +45,10 @@ Open Settings and turn on **Resolution scale per stage** (off by default) to sho
 Set a value for the whole rally or for each stage. With TSR, FSR or XeSS you can enter a value from **33% to 200%**.
 With DLSS the controls step through the game's presets, such as **58% Balanced**, **67% Quality** and **100% DLAA**.
 
+On my PC, **Hafren South** is the most demanding stage. I set it to **DLSS Performance (50%)** to match the frame
+rate I get on the other stages. StageSwitch applies 50% when Hafren South loads and switches to the saved value
+for the next stage automatically.
+
 ![Monte-Carlo with DLSS at 58% on La Bollène-Vésubie and 67% on Sisteron](docs/images/resolution-scale.png)
 
 If the game's own DLSS setting is **100% (DLAA)**, lower it to **67%** in the game and press **Apply** so
