@@ -12,7 +12,8 @@ namespace AcrFfbGain
     /// AC Rally keeps its player settings in a struct that it also writes, byte for byte, into
     /// %LOCALAPPDATA%\acr\Saved\SaveGames\PlayerDataSaveSlot.sav (rewritten whenever settings are applied).
     /// The FFB gain is a float multiplier (150 in the menu = 1.5f). The game holds a few copies of the
-    /// struct in memory; writing the value into all of them changes the force live and the menu shows it.
+    /// struct in memory; writing the value into all of them changes the force live.
+    /// The game's menu displays 0 when the applied gain exceeds its 200% range.
     ///
     /// To find the copies we take the bytes around the gain from the save file and look for the same
     /// bytes in the game's memory. This follows the user's own settings, so changing other options
@@ -20,6 +21,10 @@ namespace AcrFfbGain
     /// </summary>
     public class GainWriter
     {
+        public const int MaxGain = 400;
+        public const int GameMenuMaxGain = 200;
+        const float MaxMultiplier = MaxGain / 100f + 0.0001f;
+
         // Byte window around the gain used as the fingerprint. Within this window the save file and the
         // in-memory struct line up exactly; further back the save is packed differently (padding).
         const int Before = 48;
@@ -65,13 +70,13 @@ namespace AcrFfbGain
             lock (_gate) { _pid = 0; _addresses.Clear(); _sigIdx = null; }
         }
 
-        /// <summary>Applies the gain (0–200). Blocking: may scan the game's memory (several seconds).</summary>
+        /// <summary>Applies the gain (0–400). Blocking: may scan the game's memory (several seconds).</summary>
         public bool Apply(int pid, int gainPercent, bool fullRescan, out string error)
         {
             lock (_gate)
             {
                 error = null;
-                float value = Math.Max(0, Math.Min(200, gainPercent)) / 100f;
+                float value = Math.Max(0, Math.Min(MaxGain, gainPercent)) / 100f;
                 try
                 {
                     using (var mem = new ProcessMemory(pid))
@@ -152,7 +157,7 @@ namespace AcrFfbGain
             }
         }
 
-        /// <summary>Reads the gain the game currently uses (0–200), or null.</summary>
+        /// <summary>Reads the gain the game currently uses (0–400), or null.</summary>
         public int? ReadCurrent(int pid)
         {
             lock (_gate)
@@ -182,7 +187,7 @@ namespace AcrFfbGain
             return candidates.Distinct().ToList();
         }
 
-        /// <summary>The FFB gain (0–200) stored in the save file, or null when it can't be found.</summary>
+        /// <summary>The FFB gain (0–400) stored in the save file, or null when it can't be found.</summary>
         public static int? SavedGain(byte[] save)
         {
             if (save == null) return null;
@@ -190,7 +195,7 @@ namespace AcrFfbGain
             {
                 if (k < 0 || k + 4 > save.Length) continue;
                 float g = BitConverter.ToSingle(save, k);
-                if (g >= 0f && g <= 2.0001f) return (int)Math.Round(g * 100);
+                if (g >= 0f && g <= MaxMultiplier) return (int)Math.Round(g * 100);
             }
             return null;
         }
@@ -205,7 +210,7 @@ namespace AcrFfbGain
             {
                 if (k - Before < 0 || k + After > save.Length) continue;
                 float g = BitConverter.ToSingle(save, k);
-                if (!(g >= 0f && g <= 2.0001f)) continue;
+                if (!(g >= 0f && g <= MaxMultiplier)) continue;
 
                 var idx = new List<int>();
                 var val = new List<int>();
@@ -241,7 +246,7 @@ namespace AcrFfbGain
                     if (BitConverter.ToInt32(buf, i + idx[n]) != val[n] && ++misses > allowedMisses) return false;
                 }
                 float g = BitConverter.ToSingle(buf, i);
-                return g >= 0f && g <= 2.0001f;
+                return g >= 0f && g <= MaxMultiplier;
             }, 64, Before, After);
         }
 
@@ -250,7 +255,7 @@ namespace AcrFfbGain
             var buf = mem.Read(addr - Before, Before + After);
             if (buf == null) return false;
             float g = BitConverter.ToSingle(buf, Before);
-            if (!(g >= 0f && g <= 2.0001f)) return false;
+            if (!(g >= 0f && g <= MaxMultiplier)) return false;
             int misses = 0, allowed = _sigIdx.Length >= 12 ? 1 : 0;
             for (int n = 0; n < _sigIdx.Length; n++)
                 if (BitConverter.ToInt32(buf, Before + _sigIdx[n]) != _sigVal[n] && ++misses > allowed) return false;

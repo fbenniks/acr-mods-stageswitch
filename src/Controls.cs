@@ -70,7 +70,7 @@ namespace AcrFfbGain
         TextBox _edit;
         public int Step = 1;
         public int Minimum = 0;
-        public int Maximum = 200;
+        public int Maximum = GainWriter.MaxGain;
         /// <summary>Value 0 = "—" (leave the game's setting alone). − below Minimum goes to "—".</summary>
         public bool AllowEmpty;
         /// <summary>Value used when + is pressed on "—".</summary>
@@ -208,6 +208,15 @@ namespace AcrFfbGain
             Invalidate();
         }
 
+        protected override void OnKeyPress(KeyPressEventArgs e)
+        {
+            base.OnKeyPress(e);
+            if (e.Handled || _edit != null || !char.IsDigit(e.KeyChar)) return;
+            BeginEdit();
+            _edit.SelectedText = e.KeyChar.ToString();
+            e.Handled = true;
+        }
+
         void BeginEdit()
         {
             if (_edit != null) return;
@@ -218,17 +227,23 @@ namespace AcrFfbGain
                 ForeColor = Theme.Text,
                 Font = new Font("Segoe UI", 12f, FontStyle.Bold),
                 TextAlign = HorizontalAlignment.Center,
-                MaxLength = 3,
+                MaxLength = Maximum.ToString().Length,
                 Text = _mixed || IsEmpty ? "" : _value.ToString(),
                 Width = Width - 2 * Height - 4,
             };
             _edit.Left = Height + 2;
             _edit.Top = (Height - _edit.PreferredHeight) / 2 + 1;
             _edit.KeyPress += (s, e) => { if (!char.IsDigit(e.KeyChar) && !char.IsControl(e.KeyChar)) e.Handled = true; };
+            _edit.PreviewKeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Escape) e.IsInputKey = true;
+            };
             _edit.KeyDown += (s, e) =>
             {
-                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; EndEdit(true); }
-                else if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; EndEdit(false); }
+                if (e.KeyCode != Keys.Enter && e.KeyCode != Keys.Escape) return;
+                e.SuppressKeyPress = true;
+                EndEdit(e.KeyCode == Keys.Enter);
+                Focus();
             };
             _edit.LostFocus += delegate { EndEdit(true); };
             Controls.Add(_edit);
@@ -242,12 +257,14 @@ namespace AcrFfbGain
             if (_edit == null) return;
             var box = _edit;
             _edit = null;
-            int v;
-            if (commit && int.TryParse(box.Text, out v)) Value = v;
-            else if (commit && AllowEmpty && box.Text.Trim().Length == 0) Value = 0;
+            string text = box.Text;
             Controls.Remove(box);
             box.Dispose();
             Invalidate();
+
+            int v;
+            if (commit && int.TryParse(text, out v)) Value = v;
+            else if (commit && AllowEmpty && text.Trim().Length == 0) Value = 0;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -900,12 +917,33 @@ namespace AcrFfbGain
         /// <summary>False when "Resolution scale per stage" is off: only the FFB GAIN heading.</summary>
         public bool ShowRes = true;
 
+        static readonly Font FeatureTitle = new Font("Segoe UI Semibold", 10.5f);
+        static readonly Font FeatureSubtitle = new Font("Segoe UI", 8.5f);
+
         public ColumnHeaderBar()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            Height = 26;
-            Margin = new Padding(0, 6, 0, 2);
+            Margin = new Padding(0, 6, 0, 6);
             BackColor = Theme.Bg;
+
+            var callout = new Panel { BackColor = Color.FromArgb(26, 51, 40) };
+            var title = new Label
+            {
+                Text = "Up to " + GainWriter.MaxGain + "% FFB gain",
+                Font = FeatureTitle, ForeColor = Theme.Good, AutoSize = true, Location = new Point(12, 6),
+            };
+            var subtitle = new Label
+            {
+                Text = "AC Rally’s FFB menu shows 0 above " + GainWriter.GameMenuMaxGain + "%.",
+                Font = FeatureSubtitle, ForeColor = Color.FromArgb(195, 223, 206), AutoSize = true,
+                Location = new Point(12, title.Top + title.PreferredHeight + 2),
+            };
+            callout.Size = new Size(Math.Max(title.PreferredWidth, subtitle.PreferredWidth) + 24,
+                subtitle.Top + subtitle.PreferredHeight + 7);
+            callout.Controls.Add(title);
+            callout.Controls.Add(subtitle);
+            Controls.Add(callout);
+            Height = callout.Height;
         }
 
         protected override void OnPaint(PaintEventArgs e)

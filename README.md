@@ -28,8 +28,13 @@ higher one where your PC has room to spare.
 
 StageSwitch finds the stages in your game files and checks for new ones when you start StageSwitch or the game.
 Click a rally to open its stage list. Set the bold rally row to give all its stages the same starting value, then
-adjust any stage you want. Use **−** and **+**, or click the number to type a gain from **0 to 200**. Turn off a stage's
+adjust any stage you want. Use **−** and **+**, or click the number to type an FFB gain from **0% to 400%**. Turn off a stage's
 switch to skip automatic changes there.
+
+**Above 200%.** AC Rally’s FFB gain menu supports values up to 200% and shows **0** for higher gains.
+StageSwitch still applies the selected gain. Check the actual value in StageSwitch or its stage-load popup.
+
+![StageSwitch highlights its 400% FFB range and shows a 400% Xsara preset for Fredriksberg](docs/images/ffb-gain-400.png)
 
 ![Wales with Hafren North enabled and Hafren South switched off](docs/images/stage-gain.png)
 
@@ -86,7 +91,7 @@ StageSwitch saves your choice and uses it the next time you load the stage. You 
 stage list. If you're already on the affected stage, it can apply the value during the run. Choosing a default
 clears any overrides for the car from that run on the affected stages so it uses the new default.
 
-![MozaHud's Apply in StageSwitch dialog showing the four places to use the recommended gain](docs/images/apply-in-stageswitch.png)
+![MozaHud's Apply in StageSwitch dialog with gain set to 400% and four preset choices](docs/images/apply-in-stageswitch.png)
 
 ---
 

@@ -209,7 +209,7 @@ namespace AcrFfbGain
             FitRows();
 
             int stages = _cfg.Rallies.Sum(x => x.Stages.Count);
-            _lblFooter.Text = string.Format("{0} rallies  ·  {1} stages  ·  click a rally to show its stages", _cfg.Rallies.Count, stages);
+            _lblFooter.Text = string.Format("{0} rallies  ·  {1} stages", _cfg.Rallies.Count, stages);
         }
 
         /// <summary>
@@ -768,7 +768,8 @@ namespace AcrFfbGain
             {
                 string scope = f[1].Trim().ToLowerInvariant();
                 int gain;
-                if (!int.TryParse(f[5].Trim(), out gain) || gain < 0 || gain > 200) return "ERR gain must be 0-200";
+                if (!int.TryParse(f[5].Trim(), out gain) || gain < 0 || gain > GainWriter.MaxGain)
+                    return "ERR gain must be 0-" + GainWriter.MaxGain;
                 RallyConfig rally; StageConfig stage; string err;
                 if (!FindForCompanion(f[2], f[3], out rally, out stage, out err)) return "ERR " + err;
                 var car = _cfg.FindCar(f[4]);
@@ -984,7 +985,10 @@ namespace AcrFfbGain
                             Log.Write("Applied FFB gain " + gain + " for " + label);
                             _lblApplied.Text = "Last change: FFB " + gain + resText + "  (" + label + ")";
                             if (_cfg.ShowOverlay && popup)
-                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain + resText, label, resOk, _cfg.OverlaySeconds, style, carForPopup);
+                            {
+                                string subtitle = gain > GainWriter.GameMenuMaxGain ? label + "  ·  AC Rally menu shows 0" : label;
+                                _overlay.ShowMessage(gain.ToString(), "FFB gain set to " + gain + resText, subtitle, resOk, _cfg.OverlaySeconds, style, carForPopup);
+                            }
                         }
                         else
                         {
