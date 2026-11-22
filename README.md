@@ -9,7 +9,7 @@ particular stage. Render resolution scaling is optional.
 > to switch automatically when I loaded a different stage. I make it independently and share it for free.
 > See [Disclaimer](#disclaimer).
 
-![StageSwitch showing the DLSS resolution and FFB gain columns, with Monte-Carlo stages at 58% and 67%](docs/images/overview-dlss.png)
+![StageSwitch showing the 400% FFB callout, a 400% Xsara preset on Fredriksberg, and per-stage DLSS settings](docs/images/overview-400.png)
 
 ---
 
